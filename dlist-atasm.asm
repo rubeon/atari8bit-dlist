@@ -14,11 +14,20 @@ DMACTL  = $D400			; DMA control
 sDMACTL	= $07			; DMA Control Shadow
 NMIEN   = $D40E			; NMI enable
 WSYNC   =	$D40A
-COLOR1  =	$0D			; Color 1 shadow
-COLOR2  =	$0E			; Color 2 shadow
+COLOR0  = 	$0c
+COLOR1  =	$0d			; Color 1 shadow
+COLOR2  =	$0e			; Color 2 shadow
+COLOR3	=	$0f
 
 COLBK	= $c01a
 COLBK_SHADOW = $02C8
+; colors?
+COLPF0 = $c016
+COLPF1 = COLPF0+1
+COLPF2 = COLPF0+2
+COLPF3 = COLPF0+3
+
+;COLOR0 = $02c4
 
 
   * = $4000
@@ -91,8 +100,8 @@ init
 
 bgset
   	lda	#$08
-  	sta	COLBK
-    sta COLBK_SHADOW
+	sta 	COLBK
+  	;sta	COLBK_SHADOW
 
 
   lda #<dlist
@@ -125,9 +134,20 @@ bgset
 	sta	CHACTL			; set Character Control
   lda	#$84			; set color PF2
 	sta	COLOR2
+;	sta	COLPF1
 
 	lda	#$0F			; set color PF1
-	sta	COLOR1
+;	sta	COLOR1
+ 	 sta	COLOR1
+  lda	#$c8
+;	sta COLPF0
+	sta COLOR3
+;	sta COLPF1
+;	sta COLPF2
+;	sta COLPF3
+
+  lda	#$00
+	sta COLOR0
 
   lda	#00			; set Display List Pointer
 	sta	sDLISTL
@@ -155,21 +175,6 @@ forever
   * = $a000
 
 dlist
-  ; .byte $70,$70,$70 ; 3x8 blank lines
-  ; .byte $42
-  ; .word title
-  ; .byte $46
-  ; .word scoreline
-  ; .byte $05
-  ; .byte $08
-  ; .byte $03,$03,$03,$03,$03,$03
-
-  ; .byte $02,$02,$02,$02,$02
-  ; .byte $42,$00,$10
-	; .byte	$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02,$02
-	; ; .byte $02,$02,$02,$41,$00,$a0
-  ; loop back
-
   .byte $70,$70,$70  ; 24 blank lines
   .byte $46,        ; Mode 6 + LMS, setting screen memory to $4000
   .word title
@@ -210,22 +215,14 @@ title
   * = $b900
 scoreline
   .sbyte "PLAYER 1:              PLAYER 2:        "
-  .sbyte "PLAYER 1:              PLAYER 2:        "
-  .sbyte "PLAYER 1:              PLAYER 2:        "
-  .sbyte "PLAYER 1:              PLAYER 2:        "
-  .sbyte "PLAYER 1:              PLAYER 2:        "
-  .sbyte "PLAYER 1:              PLAYER 2:        "
-  .sbyte "PLAYER 1:              PLAYER 2:        "
-  .sbyte "PLAYER 1:              PLAYER 2:        "
+
   * = $bfe8
 carttitle
   ;       "01234567890123456789"
-  .sbyte  "  hello ehw io      "
+  .sbyte  "    hello ehw io    "
   ; .sbyte  "    hello ehw io    "
   * =	$bffc
-	.byte	$57,$50 ; "70"
+	.byte	$57,$ff ; "70"
 
-  * =	$bffd
-	.byte	$FF			; don't display atari logo
   * = $bffe
 	.word	init			; start code at $4000
