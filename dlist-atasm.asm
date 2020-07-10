@@ -1,13 +1,7 @@
-; Written in 2019 by Rob McMullen, https://playermissile.com/dli_tutorial/
-; Copyright and related rights waived via CC0: https://creativecommons.org/publicdomain/zero/1.0/
-
-; .include "hardware.s"
-
 DLISTL  = $D402			; display list lo
 DLISTH  = $D403			; display list hi
 CHACTL  = $D401			; Character control
 CHBASE  = $d409
-; CHBASE  = $f800
 sDLISTL = $05
 sDLISTH = $06
 DMACTL  = $D400			; DMA control
@@ -35,68 +29,8 @@ init
 
   sei     ; disable interrupts
   cld     ; clear decimal mode
-
-; Start
-; 	ldx	#$00
-; 	lda	#$00
-;
-; crloop1
-; 	sta	$00,x			; Clear zero page
-; 	sta	$e800,x			; Clear ANTIC
-; 	sta	$e800,x			; Clear POKEY
-; 	dex
-; 	bne	crloop1
-; 	ldy	#$00			; Clear RAM
-; 	lda	#$02			; Start at $0200
-; 	sta	$81
-; 	lda	#$00
-; 	sta	$80
-;
-; crloop2
-; 	lda	#$00
-;
-;
-; crloop3
-; 	sta	($80),y			; store data
-; 	iny				; next byte
-; 	bne	crloop3			; branch if not done page
-; 	inc	$81
-; 	lda	$81
-; 	cmp	#$40			; check if end of RAM
-; 	bne	crloop2			; branch if not
-;
-; 	ldx	#$21
-;
-; dlloop
-;   lda	#0			; set Display List Pointer
-; 	sta	sDLISTL
-; 	sta	DLISTL
-;
-;   lda	#$a0
-; 	sta	sDLISTH
-; 	sta	DLISTH
-;
-;   lda	#$F8			; set Character Set Base
-; 	sta	CHBASE
-;
-;   lda	#$22			; Enable DMA
-; 	sta	sDMACTL
-;   sta DMACTL
-;
-;   lda	#$40			; enable NMI
-; 	sta	NMIEN
-;
   ldy	#0
 	cld
-  ; lda	#$84			; set color PF2
-	; sta	COLOR2
-  ;
-	; lda	#$0F			; set color PF1
-	; sta	COLOR1
-;
-; sync
-;   ; sta WSYNC
-;   jmp Start
 
 bgset
   	lda	#$08
