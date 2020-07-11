@@ -168,3 +168,82 @@ Finally, set the entry point
 * = $bffe
   .word init
 ```
+
+# Display Lists
+
+Display list modes are defined in a .byte for each mode (and pseudo-modes)
+
+
+
+
+Mode      FGCOLOR     BGCOLOR
+2         COLOR1      COLOR2
+3         
+
+Antic
+Mode	    Basic
+Mode	           Colors	         Lines	    Width	      Bytes per
+Line	           Screen Ram
+(Bytes)
+2	        0	     2	8	40	40	960
+3	        N/A	   2	10	40	40	760
+4	        N/A	   4	8	40	40	960
+5	        N/A	   4	16	40	40	480
+6	        1	     5	      8	20	20	480
+7	        2	5	16	20	20	240
+8	        3	4	8	40	10	240
+9	        4	2	4	80	10	480
+A	        5	4	4	80	20	960
+B	        6	2	2	160	20	1920
+C	        N/A	2	1	160	20	3840
+D	        7	4	2	160	40	3840
+E	        N/A	4	1	160	40	7680
+F	        8	2	1	320	40	7680
+
+Display Mode Line
+```
+7 6 5 4 3 2 1 0
+-----------------
+|I|R|H|V|M|M|M|M|
+-----------------
+ | | | | \      /
+ | | | |  ------
+ | | | |    |
+ | | | |    2-F = display one line of graphics in
+ | | | |          ANTIC mode 2-F
+ | | | 1 = horizontal scroll enabled
+ | | |
+ | | 1 = vertical scroll enabled
+ | |
+ | 1 = reload memory scan counter with next two bytes
+ |
+ 1 = display list interrupt, all instructions
+
+```
+```
+7 6 5 4 3 2 1 0
+-----------------
+|I|n|n|n|0|0|0|0|
+-----------------
+  \   / \      /
+   ---   ------
+    |      |
+    |      0 = display blank lines
+    |
+    0-7 = number of blank lines (1-8)
+
+```
+
+```
+7 6 5 4 3 2 1 0
+-----------------
+|I|W| | |0|0|0|1|
+-----------------
+   |     \      /
+   |      ------
+   |        |
+   |        1 = jump (3 byte instruction)
+   |
+   0 = jump and display one blank line
+   1 = jump and wait for vertical blank
+```
