@@ -19,7 +19,7 @@ COLOR3	=	$0f
 
 # Main
 
-at ORG 4000 (5200 cart)
+at ORG $4000 (5200 cart)
 
 * Point IRQ vectors to BIOS routines:
 
@@ -85,11 +85,32 @@ lda	#$F8			; set Character Set Base
 sta	CHBASE
 ```
 * turn on DMA via the shadow register
+```
+7 - Unused
+6 - Unused
+5 - Display List DMA          ; $0 no DL, $20 DL
+4 - Player Missile Resolution ; $0 double , $10 single
+3 - Player DMA                ; $0 Disable P/M, $4 missile
+2 - Missile DMA               ; $8 Player, $11 Player and Missile
+1 - Playfield Width           ; $0 disable playfield, $1 Narrow
+0 - Playfield Width           ; $2 Normal (160 cclk), $3 Wide (192 cclk)
+
+$22 = 0b00100010 -> DLIST + normal width
+$2e = 0b00101110 -> DLIST + normal width + missile DMA + player DMA + PM double res
+```
+
 
 lda #$22
 sta sDMACTL
 
 * Turn on NMI interrupts for VBI ($40, or %01000000)
+```
+Reset	$20	Enable Reset key interrupt
+VBI	  $40	Enable Vertical Blank Interrupt
+DLI	  $80	Enable Display List Interrupt
+```
+
+
 ```
 lda #$40
 sta NMIEN
@@ -135,6 +156,27 @@ splash
   .sbyte             "   DLISTS ROCK!!!   "
 
 ```
+
+# Display list interrupts
+
+The display list mode byte determines if a DLI is triggered:
+
+Bits 7:4 are modifiers for Playfield Mode instructions in bits 3:0. Bit value 1 Enables the modifier, and 0 disables the modifier.
+
+```
+Bit 3:Bit 0 - Playfield Mode Instruction.
+Values $00, and $01 are special instructions.
+Mode values $02 through $0F specify Playfield Character and Map modes.
+Bit 4 - $10 - Horizontal Scroll.
+Bit 5 - $20 - Vertical Scroll.
+Bit 6 - $40 - Load Memory Scan.
+Bit 7 - $80 - Display List Interrupt.
+
+vscroll with DLI and LMS:
+$20 + $40 + $80 =
+
+``
+
 
 # Atari 5200 housekeeping
 
@@ -247,3 +289,6 @@ Display Mode Line
    0 = jump and display one blank line
    1 = jump and wait for vertical blank
 ```
+
+# VBI
+Writing a deferred VBI vector:

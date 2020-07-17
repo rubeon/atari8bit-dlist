@@ -1,7 +1,14 @@
   .include 5200.s
 
+horz_scroll = $91       ; variable used to store HSCROL value
+horz_scroll_max = $ff     ; ANTIC mode 4 has 4 color clocks
+
+
+delay = 2
 MODETEXT=$3000
 SCROLLV=2 ; speed of scrolling
+HORZ_SCROLL = $91
+COUNTER=$92
   * = $4000
 
 init
@@ -10,12 +17,17 @@ init
   lda #$fc
   sta $201
 
+  ; lda #<dli
+  ; sta $200
+  ; lda #>dli
+  ; sta $201
+
   lda #$b8          ; vbi vector
   sta $202
   lda #$fc
   sta $203
 
-  lda #$b2
+  lda #$b2          ; deferred VBI
   sta $204
   lda #$fc
   sta $205
@@ -36,9 +48,9 @@ init
   ; sta COLPF3
 
   ; shadow DLISTH/L
-  lda #<dlist1
+  lda #<dlist_coarse_mode4
   sta sDLISTL
-  lda #>dlist1
+  lda #>dlist_coarse_mode4
   sta sDLISTH
 
   ; default CHBASE
@@ -59,11 +71,53 @@ init
 
   ; set scrolling
 
+  lda #$1
+  sta CHACTL
+  lda #0          ; initialize horizontal scrolling value
+  sta horz_scroll
+  sta HSCROL      ; initialize hardware register
 
-forever
-  lda #SCROLLV
-  sta HSCROL
-  jmp forever
+; forever
+;   ldx #15         ; number of VBLANKs to wait
+; ?start
+;   lda RTCLOK+1    ; check fastest moving RTCLOCK byte
+; ?wait
+;   cmp RTCLOK+1    ; VBLANK will update this
+;   beq ?wait       ; delay until VBLANK changes it
+;   dex             ; delay for a number of VBLANKs
+;   bpl ?start
+; ;   ; enough time has passed, scroll one color clock
+;   ; brk
+;   jsr fine_scroll_left
+;   jmp forever
+;
+;
+loop
+        ldx #15         ; number of VBLANKs to wait
+?start  lda RTCLOK+1    ; check fastest moving RTCLOCK byte
+?wait   cmp RTCLOK+1    ; VBLANK will update this
+        beq ?wait       ; delay until VBLANK changes it
+        dex             ; delay for a number of VBLANKs
+        bpl ?start
+
+        ; enough time has passed, scroll one line
+        jsr coarse_scroll_down
+
+        jmp loop
+
+
+; scroll one color clock left and check if at HSCROL limit
+fine_scroll_left
+        inc horz_scroll
+        lda horz_scroll
+        cmp #horz_scroll_max ; check to see if we need to do a coarse scroll
+        bcc ?done       ; nope, still in the middle of the character
+        ; jsr coarse_scroll_left ; yep, do a coarse scroll...
+        lda #0          ;  ...followed by reseting the HSCROL register
+        sta horz_scroll
+?done   sta HSCROL      ; store vertical scroll value in hardware register
+        rts
+
 
 loadtext
   clc
@@ -74,17 +128,35 @@ loadtext
   bne loadtext
   rts
 
-dli
 
+dli
+  ldx VCOUNT
+  lda #HSCROL
+  ; ina
+  sta WSYNC
+  sta HSCROL
+  stx MODETEXT+65
+  rti
 
   * = $5000
 ; display list
+coarse_scroll_down
+        clc
+        lda dlist_coarse_address
+        adc #40
+        sta dlist_coarse_address
+        lda dlist_coarse_address+1
+        adc #0
+        sta dlist_coarse_address+1
+        rts
 
 dlist1
   .byte BLANK8,BLANK8,BLANK8  ; 24 lines : 3 bytes
-  .byte BLANK8,BLANK8,BLANK8  ; 24 lines : 3 bytes
-  .byte $42                  ; mode 2 8x8*40 (one color, two lines)
+  ; .byte BLANK8,BLANK8,BLANK8  ; 24 lines : 3 bytes
+  .byte $d2                  ; mode 2 8x8*40 (one color, two lines)
   .word mode2text
+  ; .byte MODETEXT
+
   .byte $43                  ; mode 2 8x8*40 (one color, two lines)
   .word mode3text
   .byte $44                  ; mode 2 8x8*40 (one color, two lines)
@@ -93,16 +165,53 @@ dlist1
   .word mode5text
   .byte $46                  ; mode 2 8x8*40 (one color, two lines)
   .word mode6text
-  .byte $56
+  .byte $d6
+  .word MODETEXT+64
+  .byte $d6
   .word MODETEXT+64
   ; .byte $c6  ;,6,6,6
-  .byte $47                  ; mode 2 8x8*40 (one color, two lines)
+  .byte $c7                  ; mode 2 8x8*40 (one color, two lines)
   .word mode7text
   ; .byte $42
   ; .word MODETEXT
   ; .byte 2,2,2,2,2,2
   .byte $41
   .word dlist1
+
+  * = $5200
+;
+
+coarse_scroll_up
+        sec
+        lda dlist_coarse_address
+        sbc #40
+        sta dlist_coarse_address
+        lda dlist_coarse_address+1
+        sbc #0
+        sta dlist_coarse_address+1
+        rts
+
+;
+dlist_coarse_mode4
+        .byte $70,$70,$70       ; 24 blank lines
+        .byte $44               ; Mode 4 + LMS
+dlist_coarse_address
+        .byte $b0,$84           ; screen address
+        .byte 4,4,4,4,4,4,4,4   ; 21 more Mode 4 lines
+        .byte 4,4,4,4,4,4,4,4
+        .byte 4,4,4,4,4
+        .byte $42,<static_text, >static_text ; 2 Mode 2 lines + LMS + address
+        .byte $2
+        .byte $41,<dlist_coarse_mode4,>dlist_coarse_mode4 ; JVB ends display list
+        ;             0123456789012345678901234567890123456789
+static_text
+        .sbyte +$80, " ANTIC MODE 2, NOT SCROLLED, FIRST LINE "
+        .sbyte       " ANTIC MODE 2, NOT SCROLLED, SECOND LINE"
+
+;
+.include "util_font.s"
+.include "util_scroll.s"
+.include "font_data_antic4.s"
   * = $6000
 ;
 mode2text
@@ -122,28 +231,6 @@ mode7text
   .sbyte "  hi there mode 7"
   .byte $57
   .sbyte "   "
-
-ATARTB
-  .BYTE   $0D2,$4E,$42,$97,$52,$0
-  .BYTE   $0C4,$3E,$34,$79,$42,$0
-  .BYTE   $0B6,$2E,$26,$5B,$32,$0
-  .BYTE   $0B6,$82,$86,$53,$43,$22,$0
-  .BYTE   $0A3,$03,$72,$73,$03,$42,$63,$12,$0
-  .BYTE   $0A2,$22,$72,$72,$22,$42,$72,$12,$0
-  .BYTE   $0A2,$22,$72,$72,$22,$42,$72,$12,$0
-  .BYTE   $92,$42,$62,$62,$42,$32,$62,$22,$0
-  .BYTE   $92,$42,$62,$62,$42,$32,$52,$32,$0
-  .BYTE   $92,$42,$62,$62,$42,$32,$06,$42,$0
-  .BYTE   $83,$43,$52,$53,$43,$22,$05,$52,$0
-  .BYTE   $82,$62,$52,$52,$62,$22,$05,$52,$0
-  .BYTE   $82,$62,$52,$52,$62,$22,$42,$42,$0
-  .BYTE   $7E,$42,$4E,$12,$42,$42,$0
-  .BYTE   $7E,$42,$4E,$12,$52,$32,$0
-  .BYTE   $7E,$42,$4E,$12,$52,$32,$0
-  .BYTE   $63,$83,$32,$33,$83,$02,$62,$22,$0
-  .BYTE   $62,$0A2,$32,$32,$0A2,$02,$62,$22,$0
-  .BYTE   $62,$0A2,$32,$32,$0A2,$02,$72,$12,$0
-  .BYTE   $62,$0A2,$32,$32,$0A2,$02,$72,$12,$0
 
     * = $bfe8
 romtitle ;01234567890123456789

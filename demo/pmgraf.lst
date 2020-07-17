@@ -1,0 +1,264 @@
+------- FILE pmgraf.asm LEVEL 1 PASS 2
+      1  c000 ????						; Atari 5200 "Hello World" sample code
+      2  c000 ????						; Written by Daniel Boris (dboris@comcast.net)
+      3  c000 ????						;
+      4  c000 ????						; Assemble with DASM
+      5  c000 ????						;
+      6  c000 ????
+      7  c000 ????				      processor	6502
+      8  c000 ????
+      9  c000 ????						; ************ Hardware Adresses ***************************
+     10  c000 ????
+     11  c000 ????	       d4 00	   DMACTL     equ	$D400	;DMA Control
+     12  c000 ????	       00 07	   sDMACTL    equ	$07	;DMA Control Shadow
+     13  c000 ????	       d4 07	   PMBASE     equ	$D407	;PM base address
+     14  c000 ????	       d4 09	   CHBASE     equ	$D409	;Character set base
+     15  c000 ????	       c0 1d	   GRACTL     equ	$C01D	;Graphics control
+     16  c000 ????	       c0 1b	   PRIOR      equ	$C01B	;PM priorities
+     17  c000 ????	       c0 01	   SIZEP0     equ	$C001	;Size of player 0
+     18  c000 ????	       c0 00	   HPOSP0     equ	$C000	;Horizontal position player 0
+     19  c000 ????	       c0 12	   COLPM0     equ	$C012	;Player 0 color
+     20  c000 ????	       d4 02	   DLISTL     equ	$D402	;Display list lo
+     21  c000 ????	       d4 03	   DLISTH     equ	$D403	;Display list hi
+     22  c000 ????	       00 05	   sDLISTL    equ	$05	;Display list lo shadow
+     23  c000 ????	       00 06	   sDLISTH    equ	$06	;Display list hi shadow
+     24  c000 ????	       d4 01	   CHACTL     equ	$D401	;Character control
+     25  c000 ????	       d4 0e	   NMIEN      equ	$D40E	;NMI Enable
+     26  c000 ????	       00 08	   sCOLPM0    equ	$08	;Player/missile 0 color shadow
+     27  c000 ????	       00 09	   sCOLPM1    equ	$09	;Player/missile 0 color shadow
+     28  c000 ????	       00 0a	   sCOLPM2    equ	$0A	;Player/missile 0 color shadow
+     29  c000 ????	       00 0b	   sCOLPM3    equ	$0B	;Player/missile 0 color shadow
+     30  c000 ????	       00 0c	   sCOLOR0    equ	$0C	;Color 0 shadow
+     31  c000 ????	       00 0d	   sCOLOR1    equ	$0D	;Color 1 shadow
+     32  c000 ????	       00 0e	   sCOLOR2    equ	$0E	;Color 2 shadow
+     33  c000 ????	       00 0f	   sCOLOR3    equ	$0F	;Color 3 shadow
+     34  c000 ????
+     35  c000 ????						;*************** Variable ***********************
+     36  c000 ????	       00 20	   line       equ	$20	;Current DLI line
+     37  c000 ????	       00 21	   pm0pos     equ	$21	;Current pos of P0
+     38  c000 ????
+     39  c000 ????						;*************** Start of Code *******************
+     40  c000 ????
+     41  4000					      org	$4000	;Start of cartridge area
+     42  4000				   Start
+     43  4000		       78		      sei		;Disable interrupts
+     44  4001		       d8		      cld		;Clear decimal mode
+     45  4002
+     46  4002							;************** Clear zero page and hardware ******
+     47  4002
+     48  4002		       a2 00		      ldx	#$00
+     49  4004		       a9 00		      lda	#$00
+     50  4006				   crloop1
+     51  4006		       95 00		      sta	$00,x	;Clear zero page
+     52  4008		       9d 00 d4 	      sta	$D400,x	;Clear ANTIC
+     53  400b		       9d 00 c0 	      sta	$C000,x	;Clear GTIA
+     54  400e		       9d 00 e8 	      sta	$E800,x	;Clear POKEY
+     55  4011		       ca		      dex
+     56  4012		       d0 f2		      bne	crloop1
+     57  4014
+     58  4014							;************* Clear RAM **************************
+     59  4014
+     60  4014		       a0 00		      ldy	#$00	;Clear Ram
+     61  4016		       a9 02		      lda	#$02	;Start at $0200
+     62  4018		       85 81		      sta	$81
+     63  401a		       a9 00		      lda	#$00
+     64  401c		       85 80		      sta	$80
+     65  401e				   crloop3
+     66  401e		       a9 00		      lda	#$00
+     67  4020		       91 80		      sta	($80),y	;Store data
+     68  4022		       c8		      iny		;Next byte
+     69  4023		       d0 f9		      bne	crloop3	;Branch if not done page
+     70  4025		       e6 81		      inc	$81	;Next page
+     71  4027		       a5 81		      lda	$81
+     72  4029		       c9 40		      cmp	#$40	;Check if end of RAM
+     73  402b		       d0 f1		      bne	crloop3	;Branch if not
+     74  402d
+     75  402d							;************* Setup display list *******************
+     76  402d
+     77  402d
+     78  402d		       a2 21		      ldx	#$21	;Number of bytes in list
+     79  402f				   dlloop		;Copy display list to RAM
+     80  402f		       bd 00 b0 	      lda	dlist,x	;Get byte
+     81  4032		       9d 00 10 	      sta	$1000,x	;Copy to RAM
+     82  4035		       ca		      dex		;next byte
+     83  4036		       10 f7		      bpl	dlloop
+     84  4038
+     85  4038							;************ Setup IRQ vectors *********************
+     86  4038
+     87  4038		       a9 03		      lda	#$03	;point IRQ vector
+     88  403a		       8d 00 02 	      sta	$200	;to BIOS routine
+     89  403d		       a9 fc		      lda	#$FC
+     90  403f		       8d 01 02 	      sta	$201
+     91  4042		       a9 b8		      lda	#$B8	;point VBI vector
+     92  4044		       8d 02 02 	      sta	$202	;to BIOS routine
+     93  4047		       a9 fc		      lda	#$FC
+     94  4049		       8d 03 02 	      sta	$203
+     95  404c		       a9 b2		      lda	#$B2	;point Deferred VBI
+     96  404e		       8d 04 02 	      sta	$204	;to BIOS routine
+     97  4051		       a9 fc		      lda	#$FC
+     98  4053		       8d 05 02 	      sta	$205
+     99  4056		       a9 00		      lda	#$00	;point DLI vector
+    100  4058		       8d 06 02 	      sta	$206	;to custom routine
+    101  405b		       a9 50		      lda	#$50
+    102  405d		       8d 07 02 	      sta	$207
+    103  4060		       a9 00		      lda	#$00
+    104  4062		       85 20		      sta	line
+    105  4064
+    106  4064							;************* Setup hardware registers *************
+    107  4064
+    108  4064		       a9 22		      lda	#$22	;Set color PF0
+    109  4066		       85 0c		      sta	sCOLOR0
+    110  4068		       a9 0f		      lda	#$0F	;Set color PF1
+    111  406a		       85 0d		      sta	sCOLOR1
+    112  406c		       a9 84		      lda	#$84	;Set color PF2
+    113  406e		       85 0e		      sta	sCOLOR2
+    114  4070		       a9 00		      lda	#$00	;Set Display list pointer
+    115  4072		       85 05		      sta	sDLISTL
+    116  4074		       8d 02 d4 	      sta	DLISTL
+    117  4077		       a9 10		      lda	#$10
+    118  4079		       85 06		      sta	sDLISTH
+    119  407b		       8d 03 d4 	      sta	DLISTH
+    120  407e		       a9 f8		      lda	#$f8	;Set Charcter Set Base
+    121  4080		       8d 09 d4 	      sta	CHBASE
+    122  4083		       a9 22		      lda	#$22	;Enable DMA
+    123  4085		       85 07		      sta	sDMACTL
+    124  4087		       a9 c0		      lda	#$C0	;Enable NMI + DLI
+    125  4089		       8d 0e d4 	      sta	NMIEN
+    126  408c
+    127  408c							;************ Draw display graphics *******************
+    128  408c
+    129  408c		       a0 02		      ldy	#$02	;Draw bars on screen
+    130  408e		       a9 18		      lda	#$18	;Screen memory starts at $1800
+    131  4090		       85 81		      sta	$81
+    132  4092		       a9 00		      lda	#$00
+    133  4094		       85 80		      sta	$80
+    134  4096		       a2 18		      ldx	#$18
+    135  4098				   crloop5
+    136  4098		       a9 ff		      lda	#$FF	;Bar 4 pixels wide of color 3
+    137  409a		       91 80		      sta	($80),y	;Store data
+    138  409c		       c8		      iny
+    139  409d		       c8		      iny		;Skip 4 pixels
+    140  409e		       a9 55		      lda	#$55	;Bar 4 pixels wide of color 1
+    141  40a0		       91 80		      sta	($80),y	;Store data
+    142  40a2		       c8		      iny
+    143  40a3		       c8		      iny		;Skip 4 pixels
+    144  40a4		       a9 aa		      lda	#$AA	;Bar 4 pixels wide of color 2
+    145  40a6		       91 80		      sta	($80),y	;Store data
+    146  40a8		       98		      tya
+    147  40a9		       18		      clc
+    148  40aa		       69 06		      adc	#$06	;Move pointer to next line
+    149  40ac		       a8		      tay
+    150  40ad		       ca		      dex		;Next line
+    151  40ae		       d0 e8		      bne	crloop5	;Branch if not done
+    152  40b0
+    153  40b0							;************* Setup Player/Missile registers ***************
+    154  40b0
+    155  40b0		       a9 3a		      lda	#$3A	;Enable DMA (single line resolution/
+    156  40b2		       85 07		      sta	sDMACTL	;normal background)
+    157  40b4		       a9 20		      lda	#$20	;Set PM base address ($200)
+    158  40b6		       8d 07 d4 	      sta	PMBASE
+    159  40b9		       a9 03		      lda	#$03	;Enable players and missiles
+    160  40bb		       8d 1d c0 	      sta	GRACTL
+    161  40be		       a9 16		      lda	#$16	;Color of player 0
+    162  40c0		       85 08		      sta	sCOLPM0
+    163  40c2		       a0 00		      ldy	#$00
+    164  40c4		       a9 03		      lda	#$03	;Size of player 0
+    165  40c6		       8d 01 c0 	      sta	SIZEP0
+    166  40c9		       a9 01		      lda	#$01	;Give players priority over playfield
+    167  40cb		       8d 1b c0 	      sta	PRIOR
+    168  40ce
+    169  40ce
+    170  40ce							;************ Copy player data to RAM ********************************
+    171  40ce
+    172  40ce				   pmloop1
+    173  40ce		       b9 20 b0 	      lda	pm1,y	;Get data
+    174  40d1		       99 30 24 	      sta	$2430,y	;Write it into RAM
+    175  40d4		       99 c0 24 	      sta	$24C0,y
+    176  40d7		       c8		      iny
+    177  40d8		       c0 08		      cpy	#$08	;Copy 8 bytes
+    178  40da		       d0 f2		      bne	pmloop1
+    179  40dc
+    180  40dc							;************ Move player ********************************************
+    181  40dc
+    182  40dc		       a2 20		      ldx	#$20	;Starting position of player
+    183  40de				   mvloop1
+    184  40de		       20 0d 41 	      jsr	waitvb	;Wait for a vertical bank
+    185  40e1		       a9 00		      lda	#$00	;Reset line counter
+    186  40e3		       85 20		      sta	line
+    187  40e5		       8e 00 c0 	      stx	HPOSP0	;Set position of player
+    188  40e8		       86 21		      stx	pm0pos	;Save position for DLI
+    189  40ea		       e8		      inx
+    190  40eb		       e0 b0		      cpx	#$B0	;Check for end of move
+    191  40ed		       d0 ef		      bne	mvloop1	;If not keep moving right
+    192  40ef		       a9 04		      lda	#$04	;Give playfield priority player
+    193  40f1		       8d 1b c0 	      sta	PRIOR
+    194  40f4
+    195  40f4				   mvloop2
+    196  40f4		       20 0d 41 	      jsr	waitvb	;Wait for a vertical blank
+    197  40f7		       a9 00		      lda	#$00	;Reset line counter
+    198  40f9		       85 20		      sta	line
+    199  40fb		       8e 00 c0 	      stx	HPOSP0	;Set position of player
+    200  40fe		       86 21		      stx	pm0pos	;Save position for DLI
+    201  4100		       ca		      dex
+    202  4101		       e0 40		      cpx	#$40	;Check for end of move
+    203  4103		       d0 ef		      bne	mvloop2	;If not keep moving left
+    204  4105		       a9 01		      lda	#$01	;Give player priority over playfield
+    205  4107		       8d 1b c0 	      sta	PRIOR
+    206  410a		       4c de 40 	      jmp	mvloop1	;Continue looping
+    207  410d
+    208  410d							;************ Wait for vertical blank ************************
+    209  410d
+    210  410d				   waitvb
+    211  410d		       a5 02		      lda	$02	;Read timer (this is incremented during VB)
+    212  410f				   waitvb2
+    213  410f		       c5 02		      cmp	$02	;Did it change?
+    214  4111		       f0 fc		      beq	waitvb2	;If not keep waiting
+    215  4113		       60		      rts
+    216  4114
+    217  4114							;************ Display list interrupt ************************
+    218  4114
+    219  5000					      org	$5000
+    220  5000				   dli
+    221  5000		       48		      pha		;Save A
+    222  5001		       e6 20		      inc	line	;Increment the line counter
+    223  5003		       a5 20		      lda	line	;Past the fifth DLI?
+    224  5005		       c9 05		      cmp	#$05
+    225  5007		       d0 0c		      bne	done	;If not then exit DLI
+    226  5009		       a5 21		      lda	pm0pos	;Get player 0 position
+    227  500b		       49 ff		      eor	#$FF	;Invert it
+    228  500d		       8d 00 c0 	      sta	HPOSP0	;Set player 0 position
+    229  5010		       a9 0f		      lda	#$0F	;Change player color
+    230  5012		       8d 12 c0 	      sta	COLPM0	;
+    231  5015							; Note: Player color is changed in hardware register not the shadow
+    232  5015							; register so it takes effect immediatly.
+    233  5015				   done
+    234  5015		       68		      pla		;Restore A
+    235  5016		       40		      rti		;Done
+    236  5017
+    237  5017							;************* Display list data ****************************
+    238  5017
+    239  b000					      org	$b000
+    240  b000		       70 70 70    dlist      .byte.b	$70,$70,$70	;24 blank scanlines
+    241  b003		       48 00 18 	      .byte.b	$48,$00,$18	;Mode 8 and Load memory scan $1800
+    242  b006		       88 88 88 88*	      .byte.b	$88,$88,$88,$88,$88,$88,$88	;23 more line of mode 8
+    243  b00d		       88 88 88 88*	      .byte.b	$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88,$88
+    244  b01a		       88 88 88 	      .byte.b	$88,$88,$88
+    245  b01d		       41 00 10 	      .byte.b	$41,$00,$10	;Jump back to start at $1000
+    246  b020
+    247  b020							;************* Player shape *********************************
+    248  b020
+    249  b020		       3c	   pm1	      .byte.b	%00111100
+    250  b021		       42		      .byte.b	%01000010
+    251  b022		       a5		      .byte.b	%10100101
+    252  b023		       81		      .byte.b	%10000001
+    253  b024		       a5		      .byte.b	%10100101
+    254  b025		       99		      .byte.b	%10011001
+    255  b026		       42		      .byte.b	%01000010
+    256  b027		       3c		      .byte.b	%00111100
+    257  b028
+    258  b028							;************** Cart reset vector **************************
+    259  b028
+    260  bffd					      org	$bffd
+    261  bffd		       ff		      .byte.b	$FF	;Don't display Atari logo
+    262  bffe		       00 40		      .byte.b	$00,$40	;Start code at $4000
+    263  c000
