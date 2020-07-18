@@ -27,6 +27,10 @@ POT5      = POKEY+$5        ; P3 Y
 POT6      = POKEY+$6        ; P4 X
 POT7      = POKEY+$7        ; P4 Y
 
+POTGO     = POKEY+$b
+
+SKCTL     = POKEY+$f
+
 TRIG0     = GTIA+$10        ;P1 trigger
 TRIG1     = GTIA+$11        ;P2 trigger
 TRIG2     = GTIA+$12        ;P3 trigger
@@ -34,8 +38,17 @@ TRIG3     = GTIA+$13        ;P4 trigger
 
 stopline  = $1000
 sscoreline= stopline+20
-z_as      = sscoreline+14
-z_h       = sscoreline+28
+
+playerx         = sscoreline + 13
+playery         = sscoreline + 27
+playertrig      = sscoreline + 36
+
+player_config   = $1100      ; 32(?) bytes for player configuration
+
+deadzone_right  = player_config
+deadzone_left   = player_config+1
+deadzone_up     = player_config+2
+deadzone_down   = player_config+3
 
   * = $4000
 
@@ -99,10 +112,30 @@ cpscoreline
   lda #$40
   sta NMIEN     ; enable DLI
 
+  ; init POKEY
+  lda #$03
+  sta SKCTL
+  lda #$ff
+  sta POTGO
+  sta SKCTL
+
+
+  ; setup deadzones
+  lda #90
+  sta deadzone_left
+  sta deadzone_down
+  lda #130
+  sta deadzone_right
+  sta deadzone_up
+
 forever
+  lda #$03
   jsr waitvb
   jsr Player_ReadControlsDual
+  lda #$ff
+  sta POTGO
   jmp forever
+
 
 ;
 waitvb
@@ -112,43 +145,109 @@ waitvb2
         beq     waitvb2     ;If not keep waiting
         rts
 
+firetext
+  .byte $11,$0               ; "1"," "
+  .byte $12,$0               ; "2"
+
+.LOCAL
+print_trig2
+  lda SKCTL
+  ldx #2
+  and #$08
+  cmp #$08                   ; if SKCTL==$8 then fire2?
+  bne ?done
+  ldx #3
+?done
+  lda firetext,x
+  ; ldx playertrig+1
+  sta playertrig+1
+  rts
+
+.LOCAL
+print_playerleft
+  lda POT0
+  cmp deadzone_left
+  bcc ?is_left
+  lda #0
+  jmp ?done
+?is_left
+  lda #$5e
+?done
+  sta playerx
+  rts
+
+;
+.LOCAL
+print_playerright
+  lda POT0
+  cmp deadzone_right
+  bcs ?is_right
+  lda #0
+  jmp ?done
+?is_right
+  lda #$5f
+?done
+  sta playerx
+  rts
+
+;
+.LOCAL
+print_playerdown
+  lda POT1
+  cmp deadzone_down
+  bcc ?is_down
+  lda #0
+  jmp ?done
+?is_down
+  lda #$5c
+?done
+  sta playery
+  rts
+;
+.LOCAL
+print_playerup
+  lda POT1
+  cmp deadzone_up
+  bcs ?is_up
+  lda #0
+  jmp ?done
+?is_up
+  lda #$5d
+?done
+  sta playery
+  rts
+
 
 Player_ReadControlsDual
-  lda TRIG0
-  sta z_as
+  ldx TRIG0
+  lda firetext,x            ; it works!
+  sta playertrig
+  jsr print_trig2
+
+;x
+.LOCAL
   lda POT0
-  jsr Player_ReadControlsProcessAnalog
+  cmp #110
+  bcs goright
+  jsr print_playerleft
+  jmp ?done
+goright
+  jsr print_playerright
+?done
+
+.LOCAL
   lda POT1
-  jsr Player_ReadControlsProcessAnalog
+  cmp #110
+  bcs goup
+  jsr print_playerdown
+  jmp ?done
+goup
+  jsr print_playerup
+?done
+  ; all done with the input handler
+  rts
 
-  lda #'11100000
-  ora z_as
-  sta z_h
 
-; convert analog to digital
-Player_ReadControlsProcessAnalog
-  ; Accumulator contains address to process (e.g., POT0)
-  cmp #$ff-$40
-  bcs Player_ReadControlsProcessHigh
-  cmp #$40
-  bcc Player_ReadControlsProcessLow
-  sec
-  rol z_h
-  sec
-  rol z_h
-  rts
-Player_ReadControlsProcessHigh    ; U/R
-  clc
-  rol z_as
-  sec
-  rol z_as
-  rts
-Player_ReadControlsProcessLow     ; D/L
-  sec
-  rol z_as
-  clc
-  rol z_as
-  rts
 
   * = $5000
 dlist
@@ -166,7 +265,8 @@ dlist
 topline
   .sbyte "   JOYSTICK DEMO    "
 scoreline
-  .sbyte " JOYSTICK X: 00 JOYSTICK Y:00 FIRE: OFF "
+         ;0123456789012345678901234567890123456789
+  .sbyte " JOYSTICK X: 00 JOYSTICK Y:00 FIRE: -   "
   .sbyte "                                        "
   .sbyte "                                        "
   .sbyte "                                        "
