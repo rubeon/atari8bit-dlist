@@ -2,6 +2,7 @@
 
 POKEY     = $e800
 GTIA      = $c000
+CONSOL    = GTIA+$1f
 ANTIC     = $d400
 WSYNC     = ANTIC+$0a
 NMIEN     = ANTIC+$0e
@@ -11,7 +12,7 @@ DMACTL    = ANTIC
 sDMACTL   = $07
 
 CHACTL    = ANTIC+$1
-CHBASE    = ANTIC+$09
+CHBASE    = ANTIC+$9
 
 COLOR0    = $0c
 COLOR1    = $0d
@@ -27,8 +28,21 @@ POT5      = POKEY+$5        ; P3 Y
 POT6      = POKEY+$6        ; P4 X
 POT7      = POKEY+$7        ; P4 Y
 
+
+; shadow registers for the paddles
+; maybe this will work on the 5200?
+PADDL0    = $11
+PADDL1    = PADDL0+1
+PADDL2    = PADDL0+2
+PADDL3    = PADDL0+3
+PADDL4    = PADDL0+4
+PADDL5    = PADDL0+5
+PADDL6    = PADDL0+6
+PADDL7    = PADDL0+7
+
 POTGO     = POKEY+$b
 
+IRQSTAT   = POKEY+$e
 SKCTL     = POKEY+$f
 
 TRIG0     = GTIA+$10        ;P1 trigger
@@ -43,7 +57,9 @@ playerx         = sscoreline + 13
 playery         = sscoreline + 27
 playertrig      = sscoreline + 36
 
-player_config   = $1100      ; 32(?) bytes for player configuration
+potshow = $1500
+
+player_config   = $2000      ; 32(?) bytes for player configuration
 
 deadzone_right  = player_config
 deadzone_left   = player_config+1
@@ -73,6 +89,15 @@ cpscoreline
   inx
   cpx #40
   bne cpscoreline
+;
+  ldx #0
+cpscreenlines
+  ;
+  lda scoreline+60,x
+  sta sscoreline+60,x
+  inx
+  cpx #200
+  bne cpscreenlines
 
 
 
@@ -115,9 +140,15 @@ cpscoreline
   ; init POKEY
   lda #$03
   sta SKCTL
-  lda #$ff
-  sta POTGO
-  sta SKCTL
+  ; lda #$ff
+  ; sta POTGO
+  ; sta SKCTL
+  ; turn on the pots in CONSOL
+  ; xxxx3210
+  ; js1 = $0
+  ; enablepots = $4
+  lda #'00001100
+  sta CONSOL
 
 
   ; setup deadzones
@@ -129,11 +160,12 @@ cpscoreline
   sta deadzone_up
 
 forever
-  lda #$03
+  lda #$ff
+  sta POTGO
   jsr waitvb
   jsr Player_ReadControlsDual
   lda #$ff
-  sta POTGO
+  sta SKCTL
   jmp forever
 
 
@@ -152,11 +184,11 @@ firetext
 .LOCAL
 print_trig2
   lda SKCTL
-  ldx #2
+  ldx #2                     ; '2'
   and #$08
-  cmp #$08                   ; if SKCTL==$8 then fire2?
+  cmp #$08                   ; if SKCTL==$8 then fire2
   bne ?done
-  ldx #3
+  ldx #3                     ;' ' otherwise, no fire2
 ?done
   lda firetext,x
   ; ldx playertrig+1
@@ -165,7 +197,7 @@ print_trig2
 
 .LOCAL
 print_playerleft
-  lda POT0
+  lda PADDL0
   cmp deadzone_left
   bcc ?is_left
   lda #0
@@ -179,7 +211,7 @@ print_playerleft
 ;
 .LOCAL
 print_playerright
-  lda POT0
+  lda PADDL0
   cmp deadzone_right
   bcs ?is_right
   lda #0
@@ -193,7 +225,7 @@ print_playerright
 ;
 .LOCAL
 print_playerdown
-  lda POT1
+  lda PADDL1
   cmp deadzone_down
   bcc ?is_down
   lda #0
@@ -206,7 +238,7 @@ print_playerdown
 ;
 .LOCAL
 print_playerup
-  lda POT1
+  lda PADDL1
   cmp deadzone_up
   bcs ?is_up
   lda #0
@@ -226,7 +258,7 @@ Player_ReadControlsDual
 
 ;x
 .LOCAL
-  lda POT0
+  lda PADDL0
   cmp #110
   bcs goright
   jsr print_playerleft
@@ -236,7 +268,7 @@ goright
 ?done
 
 .LOCAL
-  lda POT1
+  lda PADDL1
   cmp #110
   bcs goup
   jsr print_playerdown
@@ -244,10 +276,38 @@ goright
 goup
   jsr print_playerup
 ?done
+  lda PADDL0
+  ldx #0
+  jsr showpot
   ; all done with the input handler
+  lda PADDL1
+  ldx #3
+  jsr showpot
   rts
 
-
+;
+; Print the BCD value in A as two ASCII digits
+showpot
+  ; x has the offset to print to
+  pha             ;Save the BCD value
+  lsr A           ;Shift the four most significant bits
+  lsr A           ;... into the four least significant
+  lsr A
+  lsr A
+  tay
+  lda numbers,y
+  ; ora #'0'        ;Make an ASCII digit
+  ; jsr PRINT       ;... and print it
+  sta potshow,x
+  pla             ;Recover the BCD value
+  and #$0F        ;Mask out all but the bottom 4 bits
+  tay
+  lda numbers,y
+  ; ora #'0'        ;Make an ASCII digit
+  ; jsr PRINT       ;... and print it
+  inx
+  sta potshow,x
+  rts
 
   * = $5000
 dlist
@@ -258,7 +318,7 @@ dlist
   .word sscoreline
   .byte $5,$5,$5,$5,$5,$5,$5,$5,$5,$5
   .byte $43
-  .word POKEY
+  .word potshow
   .byte $41
   .word dlist
 
@@ -277,6 +337,15 @@ scoreline
   .sbyte "                                        "
   .sbyte "                                        "
   .sbyte "                                        "
+
+numbers
+  .sbyte "0123456789ABCDEF"
+
+carttitle
+  * = $bfd4
+  .sbyte   "@@@HcI@RPQT@sioR@@@@"
+  .sbyte  "@@@*/934)#+@4%34@@@@"
+  .BYTE   $B5
 
 
   * = $bfe8
