@@ -220,7 +220,8 @@ Display list modes are defined in a .byte for each mode (and pseudo-modes)
 
 Mode      FGCOLOR     BGCOLOR
 2         COLOR1      COLOR2
-3         
+3         COLOR1      COLOR0
+7         COLOR0
 
 Antic
 Mode	    Basic
