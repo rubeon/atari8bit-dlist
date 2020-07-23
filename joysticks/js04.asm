@@ -128,7 +128,7 @@ hscroll_ctr .ds $1
 hscroll_max .ds $1
 hexcode     .ds $2
 stopline    .ds $14
-potshow     .ds $28
+spotshow     .ds $28
 sscoreline  .ds $28
 sdlist      .ds $60
 playerx     .ds $1
@@ -146,14 +146,32 @@ chartable
 
 init
   sei
-  lda #$0
-  sta NMIEN     ; disable interrupts
-  ; sta DMACTL
-
   cld
+  ldx #0
+  lda #0
+crloop1
+  sta $00,x             ; clear zero page
+  sta ANTIC,x           ; clear ANTIC
+  sta GTIA,x           ; clear GTIA
+  sta POKEY,x
+  dex
+  bne crloop1
 
-  ; jsr set_dlist_vectors
-;
+; clear RAM
+  ldy #$00
+  lda #$02
+  sta $81
+  lda #$00
+  sta $80
+crloop3
+  sta ($80),y           ; store data
+  iny
+  bne crloop3
+  inc $81
+  lda $81
+  cmp #$40              ; check if end of RAM
+  bne crloop3
+
 cptopline
   lda topline,x
   sta stopline,x
@@ -185,6 +203,16 @@ cpdlist
   inx
   cpx #36
   bne cpdlist
+
+  ldx #$0
+
+; cache potshow
+cppotshow
+  lda potshow,x
+  sta spotshow,x
+  inx
+  cpx #$28
+  bne cppotshow
 
 .LOCAL
 fudgepmgraphics
@@ -320,56 +348,12 @@ cppmgraphics
   sta hscroll_max
 .LOCAL
 forever
-; check for pause
+  ;
+  ; check for pause
 PAUSE
   lda is_paused
   cmp #$ff
   beq PAUSE
-
-  ; jsr player_movex
-  lda playerx
-  jsr a2hexcode
-  lda hexcode
-  ldx #5
-  sta potshow,x
-  lda hexcode+1
-  inx
-  sta potshow,x
-  inx
-  inx
-  ; jsr player_movey
-  lda PADDL1
-  jsr a2hexcode
-  lda hexcode
-  ldx #1
-  sta potshow,x
-  inx
-  lda hexcode+1
-  sta potshow,x
-  lda playerx
-  jsr a2hexcode
-  ldx #$c
-  lda hexcode
-  sta sscoreline,x
-  inx
-  lda hexcode+1
-  sta sscoreline,x
-  lda playery
-  jsr a2hexcode
-  ldx #$15
-  lda hexcode
-  sta potshow,x
-  inx
-  lda hexcode+1
-  sta potshow,x
-  ; get last character pressed
-  lda ch
-  jsr a2hexcode
-  lda hexcode
-  sta potshow+$15
-  lda hexcode+1
-  sta potshow+$16
-
 
   ldx #delay
 ?loop
@@ -403,6 +387,7 @@ kbd_handler
   lda is_paused
   eor #$ff
   sta is_paused
+  jmp ?done
 ?done
   jmp XITVBL
 
@@ -441,16 +426,15 @@ init_dli
   rts
 
 vbi_deferred
-;
   ; fix colors
-  lda #$ba
-  sta COLOR0
-
-  lda #$28
-  sta COLOR2
-
-  lda #$3a
-  sta COLPF2
+  ; lda #$ba
+  ; sta COLOR0
+  ;
+  ; lda #$28
+  ; sta COLOR2
+  ;
+  ; lda #$3a
+  ; sta COLPF2
   ; reset CHBASE
   lda #$f8
   sta CHBASE
@@ -464,55 +448,48 @@ vbi_deferred
   bmi ?nodebounce
   inc keypad_debounce
 ?nodebounce
-  jsr player_movex
-  jsr player_movey
   jsr print_trig1
   jsr print_trig2
 
-  ; jsr player_movex
-  ; jsr a2hexcode
-  ; lda hexcode
-  ; ldx #5
-  ; sta potshow,x
-  ; lda hexcode+1
-  ; inx
-  ; sta potshow,x
-  ; inx
-  ; inx
-  ; jsr player_movey
+  jsr player_movex
+  jsr a2hexcode
+  lda hexcode
+  ldx #9
+  sta spotshow,x
+  lda hexcode+1
+  sta spotshow+1,x
+  inx
+  inx
+  jsr player_movey
   ; sta playery
 
-  ; lda PADDL1
-  ; jsr a2hexcode
-  ; lda hexcode
-  ; ldx #1
-  ; sta potshow,x
-  ; inx
-  ; lda hexcode+1
-  ; sta potshow,x
-  ; lda playerx
-  ; jsr a2hexcode
-  ; ldx #$c
-  ; lda hexcode
-  ; sta sscoreline,x
-  ; inx
-  ; lda hexcode+1
-  ; sta sscoreline,x
-  ; lda playery
-  ; jsr a2hexcode
-  ; ldx #$15
-  ; lda hexcode
-  ; sta potshow,x
-  ; inx
-  ; lda hexcode+1
-  ; sta potshow,x
-  ; ; get last character pressed
-  ; lda ch
-  ; jsr a2hexcode
-  ; lda hexcode
-  ; sta potshow+$15
-  ; lda hexcode+1
-  ; sta potshow+$16
+  lda PADDL1
+  jsr a2hexcode
+  lda hexcode
+  sta spotshow+$16
+  lda hexcode+1
+  sta spotshow+$17
+  lda playerx
+  jsr a2hexcode
+  ldx #$c
+  lda hexcode
+  sta sscoreline,x
+  inx
+  lda hexcode+1
+  sta sscoreline,x
+  lda playery
+  jsr a2hexcode
+  lda hexcode
+  sta spotshow+$16
+  lda hexcode+1
+  sta spotshow+$17
+  ; get last character pressed
+  lda ch
+  jsr a2hexcode
+  lda hexcode
+  sta spotshow+36
+  lda hexcode+1
+  sta spotshow+37
   jmp $fcb2
 
 .LOCAL
@@ -554,11 +531,19 @@ clearpmgraphics
   plx
   pla
   rts
+.LOCAL
 print_trig1
   ldx TRIG0
   lda firetext,x
   sta sscoreline+36
+  cpx #0
+  bne ?done
+  inc COLOR0
+  jmp ?done
+?done
   rts
+
+.LOCAL
 print_trig2
   lda SKCTL
   ldx #2
@@ -688,7 +673,7 @@ dlist
   .word blanks
   .byte $5,$5,$5                          ;,$5,$5,$5,$5,$5
   .byte $3|DL_LMS                               ;31
-  .word potshow                           ;32,33
+  .word spotshow                           ;32,33
   .byte $41                               ;34
   .word sdlist                             ;35,36
 ;
@@ -801,6 +786,9 @@ firetext
   .byte $11,$0 ; "1"," "
   .byte $12,$0 ; "2"," "
 
+potshow
+         ;0123456789012345678901234567890123456789
+  .sbyte "PADDL0: $    PADDL1: $   LAST KEY: $    "
 
   * = $6600
 
@@ -808,12 +796,11 @@ charset_city
   .include charset.asm
   * = $bfe8
 
-  .sbyte "  JOYSTICK DEMO 1   "
+  .sbyte "  joystick demo 4   "
 
   * = $bffc
   .byte $57,$50
-  * = $bffd
-  .byte $ff
-
+  ; * = $bffd
+  ; .byte $ff
   * = $bffe
   .word init
