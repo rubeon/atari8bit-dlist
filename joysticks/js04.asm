@@ -241,7 +241,7 @@ cppmgraphics
   sta CONSOL           ; enable POT 01/00 (0b00000100)
 
   ; turn on DMA
-  lda #$2e              ; 2e = DLIST + Normal Width + missile + player + pm
+  lda #62              ; 2e = DLIST + Normal Width + missile + player + pm
   sta sDMACTL           ; double resolution
                         ;
 

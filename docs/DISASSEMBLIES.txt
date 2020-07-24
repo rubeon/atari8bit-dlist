@@ -1,0 +1,696 @@
+Missile Command Init
+sei
+lda #0
+sta $d40e (nmien)
+
+lda #$4
+sta $c01f (CONSOL)
+lda #$2e
+sta $7  ; sDMACTL
+
+lda #3
+sta $c01d ; GRACTL
+
+lda #$11
+sta $c01b ; PRIOR
+
+lda #$08
+sta $d407 ; PMBASE
+
+lda #$d8
+sta $206  ; dlistL
+lda #$aa
+sta $207  ; dlistH
+
+lda #$be  ;
+sta $204  ; VVBLKD
+lda #$aa
+sta $205  ; VVBLKD+1
+
+lda #$46
+sta $20a  ; VKPD (?)
+lda #$aa
+sta $20b  ; VKPD+1
+
+(do some other stuff)
+
+LDA #$C0
+STA $D40E   ;NMIEN
+
+LDA #$40
+STA $00     ;POKMSK
+STA $E80E   ;IRQEN
+CLI   ; clear interrupt disable
+
+JSR $ACA6
+
+
+LDA #$00
+STA $C01F   ;CONSOL
+STA $3C     ; temp var
+LDA $02     ;RTCLOKL
+ADC #$0A
+A1A9: CMP $02     ;RTCLOKL
+BNE $A1A9
+
+BNE $A1A9
+LDA $11     ;PADDL0
+CMP #$E4    ; checking for trakball
+BEQ $A1BD
+INC $3C
+LDA $11     ;PADDL0
+STA $E9
+LDA $12     ;PADDL1
+STA $EA
+
+
+missile command
+AUDF1= 00    AUDF2= 00    AUDF3= 00    AUDF4= 32    AUDCTL=00    KBCODE=19
+AUDC1= 00    AUDC2= 00    AUDC3= 00    AUDC4= A4    IRQEN= 40    IRQST= FF
+SKSTAT=EF    SKCTL= 02
+
+js02:
+AUDF1= 00    AUDF2= 00    AUDF3= 00    AUDF4= 00    AUDCTL=00    KBCODE=FF
+AUDC1= 00    AUDC2= 00    AUDC3= 00    AUDC4= 00    IRQEN= 40    IRQST= FF
+SKSTAT=EF    SKCTL= FF
+
+PAC MAN Init
+
+      sei
+      lda #$0
+      ldx #$05
+1$
+      sta $2039,x
+      dex
+      bpl 1$
+
+8391  sei
+      lda #$00
+      STA $D40E   ;NMIEN
+      CLD
+      JSR $8650   ; <-sets dli vectors
+
+      LDY #$D1    ; set deferred vblank to $85d1
+      STY $0204   ;VVBLKD
+      LDX #$85
+      STX $0205   ;VVBLKD+1
+
+      LDA #$E5    ; set vkpd to $85e5; I belive this is a keyboard interrupt
+      STA $020A   ;VKPD
+      LDA #$85
+      STA $020B   ;VKPD+1
+
+      LDA #$02
+      STA $E80F   ;SKCTL
+      LDA #$3E    ;
+      STA $07     ;SDMCTL
+      LDA #$03
+      STA $C01D   ;GRACTL
+      LDA #$20
+      STA $D407   ;PMBASE
+      LDA #$04
+      STA $C01F   ;CONSOL
+      LDA #$C0
+      STA $D40E   ;NMIEN
+      LDA #$40
+      STA $00     ;POKMSK
+      STA $E80E   ;IRQEN
+      CLI
+83d4  LDA #$00    ; clearing ram segments now
+      TAX
+83d7  CPX #$39
+      BCC $83DF   ; wonder why it branches off at $39?
+      CPX #$3F
+      BCC $83E2   ; or at $3f?
+      STA $2000,X
+      STA $1800,X
+      STA $1A00,X
+      STA $1B00,X
+      STA $3000,X
+      STA $3100,XSTA $1900,X
+      STA $3200,X
+      STA $3300,X
+      DEX
+      BNE $83D7   ; loops from $ff->0 then cont.
+
+      LDX #$09
+83ff  LDA $9DB4,X
+      STA $200F,X ;
+      DEX
+      BPL $83FF   ; moving some stuff to RAM
+
+      LDX #$20
+      LDA #$00
+840c  STA $00,X   ;POKMSK
+      INX
+      BNE $840C   ; 0 bytes $20-$ff?
+
+      INC $21     ; what's at $21? just got bumped to 1
+
+      LDX $DE
+      DEX
+      STX $25
+      LDA #$00
+      STA $46
+      LDA #$08
+      STA $47
+      LDA #$E1
+      STA $44
+      LDA #$81
+      STA $45
+      LDY #$00
+842a  LDA ($44),Y   ; it just loaded $e1,0
+      STA $32       ; and put it into $32
+      BMI $8432     ; I don't know?
+      BPL $845D     ;
+      CMP #$FF      ; r u $ff?
+      BEQ $8466     ; den jump out of this loop ***
+      BVS $844B     ; BVS?
+      AND #$7F      ; Drop 7th bit 0x0111111
+      TAX
+8443  JSR $8702     ; wonder what's there
+      JSR $8700     ;
+      JSR $8709     ;
+      DEX
+      BPL $8443     ; not done yet
+      BMI $842A     ; again with the bmi?
+      AND #$3F      ; drop bits 6-7 (0x00111111)
+      JSR $8709     ;
+      JSR $8702     ;
+      JSR $8712     ;
+      JSR $8709     ; mom's spaghetti
+      LDA ($44),Y
+      AND #$0F
+      JSR $8709
+      JSR $8702
+      JMP $842A     ; ok, now I'm lost
+
+8466
+      LDA #$03      ; $44=$3,$45=$80,$46=00,$47=$30
+      STA $44
+      LDA #$80
+      STA $45
+      LDA #$00
+      STA $46
+      LDA #$30
+      STA $47
+8476  JSR $86CC
+
+
+      LDA #$F9
+      STA $44
+      LDA #$9D
+      STA $45
+      LDA #$08
+      STA $46
+      LDA #$18
+      STA $47
+      JSR $86CC
+      LDX #$1F
+848e  LDA $9E5B,X       ; storing what looks like screen data to ram
+      STA $18A8,X
+      DEX
+      BPL $848E
+      LDA #$00
+      LDX #$1F
+849B  STA $28,X         ; zeroing out $28 - $28+$1f
+      DEX
+      BPL $849B
+
+      TXS
+84A1  JSR $90F2
+      LDA #$00
+      LDX #$1F
+84a8  STA $0400,X
+      DEX
+      BPL $84A8
+      LDA $23
+      STA $38
+      STA $39
+84b4  JSR $9122
+      JSR $9140
+      JSR $915E
+
+      LDX #$03
+84bf  LDA $9C1D,X
+      STA $53,X
+      DEX
+      BPL $84BF
+
+      LDA $21
+      BNE $8507
+      LDA #$FF
+      STA $4A
+84cf  LDA $4A
+      BNE $84CF         ; what's in $4a I wonder?, and why would this ever change?
+
+      LDA #$01              ; put 9f01 into dlist
+      STA $05     ;SDLSTL
+      STA $D402   ;DLISTL
+      LDA #$9F
+      STA $06     ;SDLSTH
+      STA $D403   ;DLISTH
+
+      LDA #$4F                  ; put 854f into vdslst
+      STA $0206   ;VDSLST
+      LDA #$85
+      STA $0207   ;VDSLST+1
+
+      LDA #$11
+      STA $C01B   ;PRIOR
+84f0  JSR $8DBB
+      JSR $8E07
+      LDA $22
+      BEQ $8500
+      JSR $86B2
+      JMP $8503
+      JSR $8696
+8503
+      LDA #$02
+      STA $24
+      LDX #$FF
+      STX $4A
+
+850b  LDA $4A
+      BNE $850B
+
+      TAX
+      DEX
+      STX $4A
+      TXS         ; put x on stack?
+      STX $C017   ;COLPF1
+      LDA #$F8
+      STA $D409   ;CHBASE
+      LDA $79
+      BEQ $8526
+      JSR $90F2
+8523  JMP $850B
+
+8526
+      LDX #$2A
+      JSR $8B23
+      LDX #$47
+      JSR $8B23
+      LDA $28
+8532  BNE $8536
+      STX $04     ;ATRACT
+8536  INC $DE
+      LDA $21
+      BEQ $8542
+      JSR $8719
+      JMP $850B
+
+
+8542  JSR $87D3
+      LDA $C3
+      BNE $850B
+      JSR $8B45
+      JMP $850B
+
+
+85cb  ; generic interrupt return (XITVBV replacement maybe?)
+      PLA
+      TAY
+      PLA
+      TAX
+      PLA
+      RTI
+
+85d1  ; deferred vblank
+
+      LDA #$00
+      STA $20
+      STA $4A
+      LDA #$F8
+      STA $D409   ;CHBASE
+      LDA $4B
+      BMI $85E2
+      INC $4B
+85e2  JMP $85CB
+
+85e5:
+      LDX $4B
+      LDY #$00
+      STY $4B
+      CPX #$0A
+      BCC $85CB
+      INC $F3
+      STA $F1     ; what's in A at this point?
+      CMP #$0A
+      BEQ $861F
+      CMP #$0B
+      BEQ $862
+      CMP #$0C
+      BEQ $860A
+      CMP #$0D
+      BEQ $8612
+      CMP #$0E
+      BNE $85CB
+      JMP $8391
+
+
+
+
+
+
+8650:
+      LDA #$5F
+      STA $05     ;SDLSTL ; set dlist vec to $865f
+      STA $D402   ;DLISTL
+      LDA #$86
+      STA $06     ;SDLSTH
+      STA $D403   ;DLISTH
+      RTS
+
+86cc:
+      LDY #$00
+      LDA ($44),Y
+      AND #$C0            ; drop lower 6 bits (0b11000000)
+      BNE $86E3
+      LDA ($44),Y
+      TAX
+      LDA $9D75,X
+      JSR $8709
+86dd  JSR $8702
+      JMP $86CC
+      LSR
+      LSR
+      LSR
+      LSR
+      LSR
+      LSR
+      STA $32
+      LDA ($44),Y
+      CMP #$FF
+      BEQ $8708
+      AND #$3F
+      TAX
+      LDA $9D75,X
+      JSR $8709
+      DEC $32
+      BPL $86F7
+      BMI $86DD
+
+
+
+8700:
+      LDA ($44),Y
+8702:
+      INC $44
+      BNE $8708     ; hmm just returns if not rolled yet
+      INC $45
+8708  RTS
+8709  STA ($46),Y   ;
+      INC $46
+      BNE $8711
+      INC $47
+      RTS           ; this is all very weird
+
+87d3:
+      JSR $8D75
+      LDA $24
+      BEQ $87DE
+      CMP #$02
+      BEQ $87FC
+      LDA $28
+      BEQ $87EC
+      LDA $22
+      BEQ $87E9
+      JSR $8D93
+87e9  JMP $8DAB
+      LDA $2E
+      BEQ $87F3
+      JMP $8C3B
+
+
+
+
+
+
+
+
+
+
+
+
+87de:
+    LDA $28
+    BEQ $87EC
+    LDA $22
+    BEQ $87E9
+    JSR $8D93
+    JMP $8DAB
+    LDA $2E
+    BEQ $87F3
+    JMP $8C3B
+    LDA $29
+    BNE $8835
+    LDA $2A
+    BNE $8805
+    RTS
+
+
+
+8b23:
+      LDY #$00
+8b25  LDA $2000,X
+      CMP $2039,Y
+      BEQ $8B31
+      BCC $8B44
+      BCS $8B38
+8b31  INX
+      INY
+      CPY #$06
+      BNE $8B25
+8b37  RTS
+
+      LDA $2000,X
+      STA $2039,Y
+      INX
+      INY
+      CPY #$06
+      BNE $8B38
+8b44  RTS
+
+8b45
+
+      LDX #$04
+8b47  LDA $63,X
+      CMP #$74
+      BNE $8B50
+      JSR $8B54
+8b50  DEX
+      BPL $8B47
+8b53  RTS
+8B54  STA $4C
+      TXA
+      CMP #$04
+      BNE $8B5D
+      LDA #$FF
+8b5d  CLC
+      ADC #$24
+      STA $4D
+      LDA #$FF
+      STA $DC
+      LDA $68,X
+      STA $DD
+      CMP #$C0
+      BCC $8B8D
+      LDA #$C0
+      CMP $DD
+8b72  BEQ $8BAD
+      DEC $DD
+      ASL $DC
+      BCS $8B70
+      LDA $68,X
+      CMP #$CA
+      BCC $8BAD
+      LDA $6D,X
+      CMP #$08
+      BNE $8BAD
+      LDA #$2A
+      STA $68,X
+8b8a  JMP $8BAD
+8b8d  CMP #$39
+      BCS $8BB8
+      LDA #$38
+      CMP $DD
+      BEQ $8BAD
+      INC $DD
+      LSR $DC
+      BCS $8B91
+      LDA $68,X
+      CMP #$2A
+      BNE $8BAD
+      LDA $6D,X
+      CMP #$04
+      BNE $8BAD
+      LDA #$CA
+      STA $68,X
+8bad  LDY #$0F
+      LDA ($4C),Y
+      AND $DC
+      STA ($4C),Y
+      DEY
+      BPL $8BA
+      RTS
+
+
+8c3b:
+      LDA $2F
+      BNE $8C49
+      JSR $90F2
+      LDA #$40
+      STA $30
+      INC $2F
+      RTS
+8c49:
+      CMP #$01
+      BNE $8C6A
+      LDA $30
+      BNE $8C67
+      LDA #$00
+      LDX #$03
+8c55  STA $C000,X ;HPOSP0+3 = HPOSP3
+      DEX
+      BPL $8C55
+      LDA #$0C
+      STA $0C     ;COLOR0
+      LDA #$07
+      STA $31
+      LDA #$10
+      BNE $8C44
+      DEC $30
+      RTS
+
+
+
+
+
+
+8dbb:
+      JSR $90FD
+
+
+8d75:
+      LDA $DE
+      AND #$0F
+      BNE $8DBA
+      LDA $D8
+      BNE $8D83
+      INC $D8
+      BNE $8D87
+      LDA #$00
+      STA $D8
+      LDA $33
+      BEQ $8DA3
+      LDA $D8
+      BNE $8D93
+      TAX
+      TAY
+      BEQ $8D99
+      LDA #$12
+      LDX #$35
+      LDY #$30
+      STA $2021
+      STX $2022
+      STY $2023
+8da2  RTS
+
+8da3
+      LDA $D8
+      BNE $8DAB
+      TAX
+8da8  TAY
+      BEQ $8DB1
+      LDA #$11
+      LDX #$35
+      LDY #$30
+      STA $2004
+      STX $2005
+      STY $2006
+8dba  RTS
+      JSR $90FD
+      LDX #$5E
+      STA $00,X   ;POKMSK
+      INX
+      BNE $8DC0
+      JSR $9117
+      JSR $98CD
+      LDY $E6
+      LDA $9AD4,Y
+      STA $57
+      LDA $9AD8,Y
+      STA $58
+      LDA $9ADC,Y
+      STA $59
+      LDA $9AE0,Y
+      STA $5A
+      LDA $9AE4,Y
+      STA $5B
+      LDA $9AE8,Y
+      STA $5C
+      LDA $9AEC,Y
+      STA $5D
+      LDA #$02
+      STA $AC
+      LDX #$13
+8df6  LDA $9BB2,X
+      STA $5E,X
+      DEX
+      BPL $8DF6
+      LDY #$00
+      JSR $8E44
+
+8e44
+      CPY #$03
+      BCC $8E4A
+      LDY #$03
+      LDX #$02
+8e4c  LDA $9C21,Y
+      STA $A9,X
+      INY
+      DEX
+      BPL $8E4C
+      RTS
+
+
+
+90F2
+      LDY #$07     ; zeroing out e807-e800 (POT7-POT0)
+      LDA #$00
+90f6  STA $E800,Y ;AUDF1
+      DEY
+      BPL $90F6
+      RTS
+
+90fd:
+      LDX #$00
+      TXA
+      JSR $9104
+      RTS
+
+9104:
+      STA $2300,X
+      STA $2400,X
+      STA $2500,X
+      STA $2600,X
+      STA $2700,X
+      INX
+      BNE $9104
+      RTS
+
+
+9122
+      LDX #$00
+9124  LDA $0800,X   ; weird.  Copying 0800-08ff -> 0c00-0cff
+      STA $0C00,X
+      LDA $0900,X   ; Copying 0900-09ff -> 0d00-0dff
+      STA $0D00,X
+      LDA $0A00,X   ; Copying 0a00-0aff -> 0e00-0eff
+      STA $0E00,X
+      LDA $0B00,X   ; Copying 0b00-0bff -> 0f00-0fff
+      STA $0F00,X
+      INX
+      BNE $9124
+      RTS

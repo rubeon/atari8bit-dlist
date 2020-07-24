@@ -52,11 +52,7 @@ COLPF1    = GTIA+$17
 COLPF2    = GTIA+$18
 COLPF3    = GTIA+$19
 COLBK     = GTIA+$1a
-; shadow color registers
-COLOR0    = $0c
-COLOR1    = $0d
-COLOR2    = $0e
-COLOR3    = $0f
+
 
 POKEY   = $e800
 POT0      = POKEY           ; P1 X
@@ -73,6 +69,12 @@ IRQEN     = POKEY+$e
 IRQSTAT   = POKEY+$e
 SKCTL     = POKEY+$f
 
+; shadow color registers
+COLOR0    = $0c
+COLOR1    = $0d
+COLOR2    = $0e
+COLOR3    = $0f
+COLOR4    = $10
 ; shadow pokeys
 PADDL0    = $11
 PADDL1    = PADDL0+1
@@ -102,36 +104,74 @@ screentext
 
 init
   sei                                   ; clear interrupts
-  cld
-                               ; clear decimal?
+  cld                                   ; clear decimal?
+  lda #$0
+  sta NMIEN
+
   ldx #0
   lda #0
-crloop1                                 ; clear the ram
-  sta $00,x                             ; clear zero page
-  sta ANTIC,x                           ; clear the ANTIC
-  sta GTIA,x                            ; clear the GTIA
-  sta POKEY,x                           ; clear the pokey
-  dex
-  bne crloop1
-
-  ldy #$00
-  lda #$02
-  sta $81
-  lda #$00
-  sta $80                               ; $00,$02 $0200
-crloop3
-  sta ($80),y                           ; sta $0200-$02ff
-  iny                                   ; clears out interrupt vectors
-  bne crloop3
-
-  inc $81                               ; =$03
-  lda $81
-  cmp #$40                              ; not at $4000 yet?
-  bne crloop3
-
+; crloop1                                 ; clear the ram
+  ; sta $00,x                             ; clear zero page
+  ; sta ANTIC,x                           ; clear the ANTIC
+  ; sta GTIA,x                            ; clear the GTIA
+  ; sta POKEY,x                           ; clear the pokey
+  ; dex
+  ; bne crloop1
+;
+  ; ldy #$00
+  ; lda #$02
+  ; sta $81
+  ; lda #$00
+  ; sta $80                               ; $00,$02 $0200
+; crloop3
+  ; sta ($80),y                           ; sta $0200-$02ff
+  ; iny                                   ; clears out interrupt vectors
+  ; bne crloop3
+;
+  ; inc $81                               ; =$03
+  ; lda $81
+  ; cmp #$40                              ; not at $4000 yet?
+  ; bne crloop3
   ; default chbase
+  lda #~00000100
+  sta CONSOL            ; enable POT 01/00 (0b00000100)
+  lda #~00101101        ;
+  sta sDMACTL           ; double resolution
+  ; sta DMACTL
+  ;
+  lda #$3               ; 0b00000011 -> enable players / enable missiles
+  sta GRACTL            ;
+  lda #$1             ; 0b00010001 -> bit 4: 5th player / bit 0: priority 0
+  sta PRIOR             ;
+
+  ; jsr set_default_colors
+  lda #$ef
+  sta COLOR0
+  sta COLPM0                  ; player0 color
+
+
+  lda #$ff
+  sta COLPM1
+  sta COLOR1
+
+  lda #$84
+  sta COLPM2
+  sta COLOR2
+
   lda #$f8
   sta CHBASE
+
+  ; setup dlist
+  ; setup initial display list
+  lda #<dlist
+  sta sDLISTL
+  sta DLISTL
+
+  lda #>dlist
+  sta sDLISTH
+  sta DLISTH
+
+
 
   ; setup vectors
   lda #$03                              ; BIOS interrupt handler @ $fc03
@@ -164,32 +204,24 @@ crloop3
   sta $206
   lda #>dli
   sta $207
+  lda #$a1
+  sta $206
+  lda #$fe
+  sta $207
 
 
-  lda ~00001100
-  sta CONSOL           ; enable POT 01/00 (0b00000100)
 
   ; turn on DMA
-  lda #$2e              ; 2e = DLIST + Normal Width + missile + player + pm
-  sta sDMACTL           ; double resolution
-                          ;
-  lda #$3               ; 0b00000011 -> enable players / enable missiles
-  sta GRACTL            ;
-
-  lda #$80              ; 0b00010001 -> bit 4: 5th player / bit 0: priority 0
-  sta PRIOR             ;
-
-
-  ; setup initial display list
-  lda #<dlist
-  sta sDLISTL
-  sta DLISTL
-
-  lda #>dlist
-  sta sDLISTH
-  sta DLISTH
-
-  jsr set_default_colors
+  ; Bit Hex Dec  Usage
+  ;   7 -   -    unused
+  ;   6 -   -    unused
+  ;   5 32  20   Display List DMA
+  ;   4 16  10   Player-Missile resolution (0=double, 1=single)
+  ;   3  8   8   Player DMA
+  ;   2  4   4   Missile DMA
+  ;   1  2   2   Playfield Width  0,0 => disable PF; 0,1 narrow PF
+  ;   0  1   1   Playfield Width  1,0 -> Normal PF, 1,1 wide pf
+  ;
 
   ; Serial port activiate
   ; B Dec Hex Function
@@ -216,6 +248,7 @@ crloop3
   ; 2   4  POKEY timer 4 interrupt enable
   ; 1   2  POKEY timer 2
   ; 0   1  POKEY timer 1
+  ; sei
   lda #$40
   sta IRQEN
   sta POKMSK
@@ -226,7 +259,9 @@ crloop3
 forever
   jmp forever
 
+.LOCAL
 vbi_deferred
+  lda RANDOM
   jmp $fcb2
 ; keyboard interrupt handler
 kbd_handler
@@ -243,22 +278,48 @@ dli
   rti             ; always end DLI with RTI!
 
 set_default_colors
-  lda #$cf
-  sta COLBK
+  ; ANTIC mode 7 colors:
+  ;
+  ; brk
+  lda #$ef
+  sta COLOR0
+  sta COLPM0                  ; player0 color
+
+
   lda #$ff
-  sta sCOLOR1
+  sta COLPM1
+  sta COLOR1
 
+  lda #$84
+  sta COLPM2
+  sta COLOR2
 
+  lda #$10
+  sta COLBK
+  lda #$f8
+  sta CHBASE
   rts
 
-  * = $6000
+  * = $5000
+; dlist
+;   .byte $70,$70,$70               ; 24 blank lines
+;   .byte $7|DL_LMS                       ; mode 7 LMS
+;   .word topline
+;   .byte $3|DL_LMS                       ; mode 3 LMS
+;   .word scoreline
+;   .byte $2|DL_LMS                ; mode 3 LMS
+;   .word screentext
+;   .byte $41
+;   .word dlist                           ; back to top
+
 dlist
   .byte $70,$70,$70               ; 24 blank lines
-  .byte $7|DL_LMS                       ; mode 7 LMS
+  .byte $47
   .word topline
-  .byte $3|DL_LMS                       ; mode 3 LMS
+  .byte $43
   .word scoreline
-  .byte $3|DL_LMS|DL_DLI                ; mode 3 LMS
+  .byte $5,$5,$5,$5,$5,$5,$5,$5,$5,$5
+  .byte $43                ; mode 3 LMS
   .word screentext
   .byte $41
   .word dlist                           ; back to top

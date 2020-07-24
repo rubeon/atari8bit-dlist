@@ -173,7 +173,8 @@ cppmgraphics
   sta CONSOL           ; enable POT 01/00 (0b00000100)
 
   ; turn on DMA
-  lda #$2e              ; 2e = DLIST + Normal Width + missile + player + pm
+  ; lda #$2e              ; 2e = DLIST + Normal Width + missile + player + pm
+  lda #46                 ; 32 + 0 + 8 + 4 + 2 = 46
   sta sDMACTL           ; double resolution
                         ;
 
@@ -325,11 +326,12 @@ dlist
   .byte $70,$70,$70
   .byte $47
   .word stopline
-  .byte $43
+  .byte $42
   .word sscoreline
-  .byte $5,$5,$5,$5,$5,$5,$5,$5,$5,$5
+  ; .byte $5,$5,$5,$5,$5,$5,$5
+  .byte $5 * 35
   .byte $43
-  .word potshow
+  .word spotshow
   .byte $41
   .word dlist
 
@@ -349,7 +351,7 @@ scoreline
   .sbyte "                                        "
   .sbyte "                                        "
   .sbyte "                                        "
-
+  .byte 0
 numbers
   .sbyte "0123456789ABCDEF"
 
@@ -366,7 +368,7 @@ pmgraphics_rom
 
   * = $bfe8
 
-  .sbyte "  JOYSTICK DEMO 1   "
+  .sbyte "  JOYSTICK DEMO 3   "
 
   * = $bffc
   .byte $57,$50
