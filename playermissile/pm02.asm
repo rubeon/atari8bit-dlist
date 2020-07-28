@@ -1,5 +1,6 @@
 ; setup equates
 POKMSK = $0
+RTCLK
 ; vectors
 VVBLKI    = $202
 VVBLKD    = $204
@@ -36,6 +37,9 @@ sCOLOR0   = $0C
 sCOLOR1   = $0D
 sCOLOR2   = $0E
 sCOLOR3   = $0F
+sCOLBK    = $10
+
+RTCLOK    = $1
 
 ; GIT registers
 GTIA      = $c000
@@ -137,10 +141,10 @@ PADDL6    = PADDL0+6
 PADDL7    = PADDL0+7
 
 ; some constants
-DL_HSCROLL = $10
-DL_VSCROLL = $20
-DL_LMS     = $40
-DL_DLI     = $80
+DL_HSCROLL      = $10
+DL_VSCROLL      = $20
+DL_LMS          = $40
+DL_DLI          = $80
 deadzone_up     = 90
 deadzone_down   = 130
 deadzone_left   = $60
@@ -148,25 +152,34 @@ deadzone_right  = 120
 playerx_min     = $2f
 playerx_max     = $c9
 player_graphic  = $86
-
+vert_scroll_max = $10
 ; some data space in RAM
   * = $1000
-stopline    .ds 20
-ch          .ds 1
-hexcode     .ds 2
-playerx     .ds 1
-playery     .ds 1
-player_accel .ds 1        ; current acceleration
-player_dir   .ds 1        ; current direction
-sscoreline  .ds 40
-feet_countdown  .ds 1
-blink_countdown .ds 1
-blink_countdown_exit .ds 1
+stopline              .ds 20
+ch                    .ds 1
+hexcode               .ds 2
+playerx               .ds 1
+playery               .ds 1
+player_accel          .ds 1        ; current acceleration
+player_dir            .ds 1        ; current direction
+player_updown         .ds 1        ; $0=neutral,$8=up, $f=down
+sscoreline            .ds 40
+feet_countdown        .ds 1
+blink_countdown       .ds 1
+blink_countdown_exit  .ds 1
+last_color            .ds 1
+delay                 .ds 1
+vert_scroll           .ds 1         ; current vert_scroll
+; vert_scroll_max       .ds 1         ; number of scanlines to scroll
+                                    ; mode 5 has 16
+scroll_dir            .ds 1
+
   * = $1400
 mainscreen
   * = $1500
 spotshow
-
+  * = $1600
+sdlist
 
 ; pm graphics
   * = $2000
@@ -222,11 +235,12 @@ crloop3
   lda #~00000100
   sta CONSOL            ; enable POT 01/00 (0b00000100)
 
-  lda #~00111110        ; normal width (0,1), missiles (2), players (3),
+  ; lda #~00111110        ; normal width (0,1), missiles (2), players (3),
+  lda #$3e
   sta sDMACTL           ; single resolution (4), DLIST (5)
   lda #$3               ; 0b00000011 -> enable players / enable missiles
   sta GRACTL            ;
-  lda #$01              ; 0b00010001 -> bit 4: 5th player / bit 0: priority 0
+  lda #$00              ; 0b00010001 -> bit 4: 5th player / bit 0: priority 0
   sta PRIOR             ;
   ; set the colors
   ; lda #$ff
@@ -242,14 +256,54 @@ crloop3
   ; sta COLPM2
   ; sta COLOR2
   ;
+  lda #$5c
+  sta sCOLPM0
+  sta COLPM0
+  lda #$5c
+  sta sCOLPM1
+  sta COLPM1
+  lda #$36
+  sta sCOLPM2
+  sta COLPM2
+  lda #$36
+  sta sCOLPM3
+  sta COLPM3
+
+  lda #$f8
+  sta COLPF0
+  sta sCOLOR0
+  lda #$0
+  sta COLPF1
+  sta sCOLOR1
+  lda #$b4
+  sta COLPF2
+  sta sCOLOR2
+  lda #$86
+  sta COLPF3
+  sta sCOLOR3
+  lda #$d0
+  sta sCOLBK
+  sta COLBK
+
+
   lda #$f8
   sta CHBASE
 
+  ; copy dlist to RAM
+  ldx #0
+dlist_loop
+  lda dlist,x
+  sta sdlist,x
+  inx
+  cpx #31
+  bne dlist_loop
+?done
+
   ; setup display list
-  lda #<dlist
+  lda #<sdlist
   sta sDLISTL
   sta DLISTL
-  lda #>dlist
+  lda #>sdlist
   sta sDLISTH
   sta DLISTH
 
@@ -301,7 +355,7 @@ crloop3
 
   ; lda #$ff
   ; sta sCOLPM0
-
+  ; initialize scroll variables
 ; cache dynamic strings in RAM
 ; copy topline
 .LOCAL
@@ -340,32 +394,174 @@ scoreline_loop
   lda #$5f
   sta playerx
 
+  lda #0
+  sta vert_scroll
+  sta VSCROL
+
+  lda #16
+  sta vert_scroll_max
+
+  lda #155
+  sta delay
+
+
+
+.LOCAL
 forever
-  lda VCOUNT ; give a varying shade for the background, just because
-  and #$0f
-  sta WSYNC
-  sta COLBK
-nochange
-jumpback
+;   ldx delay
+; ?start
+;   lda RTCLOK+1
+; ?waitvb
+;   cmp RTCLOK+1
+;   beq ?waitvb
+;   dex
+;   bpl ?start
+;   ; check up/down movement
+;   ; lda player_updown
+;   ; cmp #0
+;   ; beq ?done
+;   ; cmp #$f
+;   ; beq ?down
+;   jsr fine_scroll_up
+;   jmp ?done
+; ?down
+;   jsr fine_scroll_down
+; ?done
+;   jsr show_scroll
   jmp forever
 
+;
+.LOCAL
 vbi_deferred
-  ; restore default background color
-  lda #$cf
-  sta COLOR0
-  sta COLOR1
-  lda #$3c
-  sta COLPM0
-  lda #$0f
-  sta COLPM1
-  ; sta COLOR2
-  ; jsr move_player
-
+  cld
+  lda #$f8
+  sta CHBASE
   jsr write_player
   lda playerx
   sta HPOSP0
+  lda player_updown
+  cmp #0
+  beq ?done
+  cmp #$f
+  beq ?down
+  jsr fine_scroll_up
+  jmp ?done
+?down
+  jsr fine_scroll_down
+  jmp ?done
+?neutral
+  lda #0
+  sta vert_scroll
+?done
+  lda vert_scroll
+  sta VSCROL
+  jsr show_scroll
   jmp $fcb2
 ;
+
+
+.LOCAL
+fine_scroll_down
+  inc vert_scroll
+  lda vert_scroll
+  cmp #vert_scroll_max    ; check if we've reached the max scroll?
+  bne ?done               ; nope, still in the cell
+  jsr coarse_scroll_down  ; reached the last scan line, move a  line
+  lda #0
+  sta vert_scroll
+?done
+  sta VSCROL
+  ; jsr a2hexcode
+  ; lda hexcode
+  ; sta spotshow+10
+  ; lda hexcode+1
+  ; sta spotshow+11
+  rts
+
+.LOCAL
+fine_scroll_up
+  dec vert_scroll
+  lda vert_scroll
+  bpl ?done
+  jsr coarse_scroll_up
+  lda #vert_scroll_max-1
+  sta vert_scroll
+?done
+  rts
+
+
+
+.LOCAL
+coarse_scroll_down
+  clc
+  lda sdlist+11
+  adc #40           ; down a line in memory
+  sta sdlist+11
+  lda sdlist+12
+  adc #0
+  cmp #$6d
+  beq ?reset
+  sta sdlist+12
+  jmp ?done
+?reset
+  lda #>cmpf
+  sta sdlist+12
+  lda #$0
+  sta sdlist+11
+?done
+
+  rts
+
+;
+coarse_scroll_up
+  sec
+  lda sdlist+11
+  sbc #40
+  sta sdlist+11
+  lda sdlist+12
+  sbc #0
+  sta sdlist+12
+  rts
+
+show_scroll
+  lda vert_scroll
+  jsr a2hexcode
+  lda hexcode
+  sta spotshow+8
+  lda hexcode+1
+  sta spotshow+9
+  ; lda numbers,x
+  ; sta spotshow+8
+;
+  lda sdlist+12
+  jsr a2hexcode
+  lda hexcode
+  sta spotshow+19
+  lda hexcode+1
+  sta spotshow+20
+
+  lda sdlist+11
+  jsr a2hexcode
+  lda hexcode
+  sta spotshow+21
+  lda hexcode+1
+  sta spotshow+22
+
+  rts
+
+; coarse_scroll_down
+  ; clc
+  ; lda dlist_coarse_address
+  ; adc #40
+  ; sta dlist_coarse_address
+  ; lda dlist_coarse_address+1
+  ; adc #0
+  ; sta dlist_coarse_address+1
+  ; rts
+
+
+
+
 .LOCAL
 write_player
 ; empty player
@@ -387,6 +583,7 @@ write_player
   jmp ?loop
 ?checkanim
   lda player_dir
+  ora player_updown
   cmp #0
   beq ?check_blink
 ?animfeet
@@ -437,7 +634,7 @@ write_player
   lda #5
   sta blink_countdown_exit
   lda #'b
-  sta potshow+20
+  ; sta potshow+20
   ldx playery
   lda #~01111110
   sta pm_player0+4,x
@@ -453,6 +650,7 @@ write_player
 
   rts
 .LOCAL
+; first handle e/w
 move_player
   lda PADDL0      ; x/y
   cmp #deadzone_left
@@ -465,7 +663,7 @@ move_player
   dec feet_countdown
 
   lda dirtxt,x
-  sta spotshow+38
+  ; sta spotshow+38
   ; load the left-facing player
   ldx #<pmgraphics_lonely_l
   stx player_graphic
@@ -476,12 +674,12 @@ move_player
   lda playerx
   cmp #playerx_min
   blt ?stopleft
-  jmp ?done
+  jmp ?northsouth
 ?moveright
   dec feet_countdown
   ldx #1
   lda dirtxt,x
-  sta spotshow+38
+  ; sta spotshow+38
   ldx #<pmgraphics_lonely_r
   stx player_graphic
   ldx #>pmgraphics_lonely_r
@@ -492,62 +690,87 @@ move_player
   sta player_dir
   cmp #playerx_max
   bge ?stopright
-  jmp ?done
+  jmp ?northsouth
 ?stopleft
   lda #playerx_min
   sta playerx
-  jmp ?done
+  jmp ?northsouth
 ?stopright
   lda #playerx_max
   sta playerx
-  jmp ?done
+  jmp ?northsouth
 ?neutral
   lda #'n
-  sta spotshow+38
+  ; sta spotshow+38
   lda feet_countdown
-  sta spotshow+39
+  ; sta spotshow+39
   lda #0
   sta player_dir
+?northsouth
+  lda PADDL1
+  cmp #deadzone_up
+  blt ?moveup
+  cmp #deadzone_down
+  bge ?movedown
+  lda #0
+  jmp ?done
+?moveup
+  dec feet_countdown
+  lda #$8
+  jmp ?done
+?movedown
+  dec feet_countdown
+  lda #$f
 ?done
+  sta player_updown
   ; lda #$72
   ; sta playerx
+  ; jsr a2hexcode
+  ; lda hexcode
+  ; sta spotshow+20
+  ; lda hexcode+1
+  ; sta spotshow+21
   rts
 
 .LOCAL
 dli
-  ; lda VCOUNT
-  ; cmp #20
-  ; bcc ?top
-  ; lda #$c0
-  ; sta COLOR2
+  lda VCOUNT
+  cmp #$50
+  bge ?bottom
+  lda #>cmchar
+  sta CHBASE
+
+
   jsr move_player
   lda PADDL0
   jsr a2hexcode
   lda hexcode
   ; sta COLOR2
   ldy #8
-  sta spotshow,y
+  ; sta spotshow,y
   lda hexcode+1
-  sta spotshow+1,y
+  ; sta spotshow+1,y
   ; lda PADDL1
   lda #$92
   sta playery
   jsr a2hexcode
   lda hexcode
   ldy #22
-  sta spotshow,y
+  ; sta spotshow,y
   lda hexcode+1
-  sta spotshow+1,y
+  ; sta spotshow+1,y
   lda playerx
   jsr a2hexcode
   ldy #30
-  sta spotshow,y
+  ; sta spotshow,y
   lda hexcode+1
-  sta spotshow+1,y
-
+  ; sta spotshow+1,y
   jmp ?done
 ; ?top
 ;   lda #
+?bottom
+  lda #$f8
+  sta CHBASE
 ?done
   rti
 
@@ -586,27 +809,29 @@ dlist
   .byte $70,$70,$70
   .byte $47
   .word stopline
-  .byte $2|DL_LMS
+  .byte $2|DL_LMS|DL_DLI
   .word sscoreline
-  ; .byte $5,$5,$5,$5,$5,$5,$5,$5,$5,$5
-  .byte $3|DL_LMS
-  .word blanks
-  .byte 3,3,3,3,3,3,3
-  .byte $3|DL_LMS
-  .word blanks
-  .byte 3,3,3,3,3,3,3
-  .byte $2|DL_DLI|DL_LMS
+  .byte $0                        ; blank line
+  .byte $5|DL_LMS|DL_VSCROLL
+  .word cmpf
+  .byte $5|DL_VSCROLL,$5|DL_VSCROLL,$5|DL_VSCROLL,$5|DL_VSCROLL,
+  .byte $5|DL_VSCROLL,$5|DL_VSCROLL,$5|DL_VSCROLL,$5|DL_VSCROLL,
+  .byte $5|DL_VSCROLL
+  .byte $5                        ; buffer for vscroll
+  .byte $0|DL_DLI
+  .byte $2|DL_LMS
   .word spotshow
   .byte $41
   .word dlist
+  .byte $ff ; stopme!
 
 topline
          ;012345678901234567890
-  .sbyte "   PLAYER DEMO 1    "
+  .sbyte "   PLAYER DEMO 2    "
 
 scoreline
          ;0123456789012345678901234567890123456789
-  .sbyte " JOYSTICK X:$00 JOYSTICK Y:$00 FIRE:    "
+  .sbyte "  PM GRAPHICS WITH SCROLLING PLAYFIELD  "
 blanks
   .sbyte "                                        "
   .sbyte "                                        "
@@ -621,7 +846,7 @@ blanks
   * = $5200
 potshow
          ;0123456789012345678901234567890123456789
-  .sbyte "PADDL0:       PADDL1:                   "
+  .sbyte "VSCROL:       LMS:                      "
   .sbyte "Following on that..."
 dirtxt
   .sbyte "LR"
@@ -674,12 +899,20 @@ pmgraphics_lonely_l
   .byte   ~01010010
 
 numbers
-  .sbyte "0123456789ABCDEF"
+  .sbyte "0123456789abcdef"
+
+  * = $6000
+cmchar
+  .incbin cmchar.dat
+  * = (* & $ff00) + 256
+cmpf
+  .incbin cmpf.dat
+
 
 ; atari cart housekeeping
   * = $bfe8
          ;01234567890123456789
-  .sbyte "   PLAYER DEMO 1    "
+  .sbyte "   PLAYER DEMO 2    "
   .byte                 $56
   .sbyte                   "  "
 
