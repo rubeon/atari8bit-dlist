@@ -1,7 +1,7 @@
 ; setup equates
 POKMSK = $0
-RTCLK
 ; vectors
+VIMIRQ    = $200
 VVBLKI    = $202
 VVBLKD    = $204
 VBREAK    = $206
@@ -153,6 +153,10 @@ playerx_min     = $2f
 playerx_max     = $c9
 player_graphic  = $86
 vert_scroll_max = $10
+vymax           = $a
+vxmax           = $5
+physics_timer_default = $10
+gravity         = $1
 ; some data space in RAM
   * = $1000
 stopline              .ds 20
@@ -173,6 +177,10 @@ vert_scroll           .ds 1         ; current vert_scroll
 ; vert_scroll_max       .ds 1         ; number of scanlines to scroll
                                     ; mode 5 has 16
 scroll_dir            .ds 1
+vx                    .ds 1
+vy                    .ds 1
+
+physics_timer         .ds 1
 
   * = $1400
 mainscreen
@@ -242,32 +250,26 @@ crloop3
   sta GRACTL            ;
   lda #$00              ; 0b00010001 -> bit 4: 5th player / bit 0: priority 0
   sta PRIOR             ;
-  ; set the colors
-  ; lda #$ff
-  ; sta COLOR0
-  ; sta COLPM0                  ; player0 color
 
 
-  ; lda #$ff
-  ; sta COLPM1
-  ; sta COLOR1
-  ;
-  ; lda #$84
-  ; sta COLPM2
-  ; sta COLOR2
-  ;
+; player colors
   lda #$5c
   sta sCOLPM0
   sta COLPM0
+
   lda #$5c
   sta sCOLPM1
   sta COLPM1
+
   lda #$36
   sta sCOLPM2
   sta COLPM2
+
   lda #$36
   sta sCOLPM3
   sta COLPM3
+
+; playfield colors
 
   lda #$f8
   sta COLPF0
@@ -286,10 +288,10 @@ crloop3
   sta COLBK
 
 
-  lda #$f8
+  lda #$f8                        ; set the default character set
   sta CHBASE
 
-  ; copy dlist to RAM
+; copy dlist to RAM
   ldx #0
 dlist_loop
   lda dlist,x
@@ -299,66 +301,67 @@ dlist_loop
   bne dlist_loop
 ?done
 
-  ; setup display list
+; setup display list
   lda #<sdlist
   sta sDLISTL
   sta DLISTL
+
   lda #>sdlist
   sta sDLISTH
   sta DLISTH
 
 ; setup vectors
 ; reset NMIs etc.
-  lda #$03    ; point interrupt vector to
-  sta $200    ; bios handler ($fc03)
+  lda #$03                      ; point interrupt vector to
+  sta VIMIRQ                    ; bios handler ($fc03)
   lda #$fc
-  sta $201
+  sta VIMIRQ+1
 
-  lda #$b8
-  sta VVBLKI
+  lda #$b8                      ; point vblank interrupt to bios
+  sta VVBLKI                    ; handler ($fcb8)
   lda #$fc
   sta VVBLKI+1
+
   ; DLI handler
-  lda #<dli
-  sta VBREAK
+  lda #<dli                     ; add my dli handler to the
+  sta VBREAK                    ; dli continuation vector
   lda #>dli
   sta VBREAK+1
+
   ; ; vbi deferred vector
-  lda #<vbi_deferred
-  sta VVBLKD
-  lda #>vbi_deferred
+  lda #<vbi_deferred            ; here I can put my VBI (deferred) handler
+  sta VVBLKD                    ; to the vector used by the VBI BIOS
+  lda #>vbi_deferred            ; routine
   sta VVBLKD+1
 
-  lda #$02
-  sta VKYBDI
+  lda #$02                      ; set the keyboard interrupt handler to
+  sta VKYBDI                    ; the BIOS routine ($fd02)
   lda #$fd
   sta VKYBDI+1
 
-  ; vkpd routine? crashes unforto
-  lda #<kbd_handler
+  ; vkpd routine - called after a keyboard interrupt
+  lda #<kbd_handler             ; load my kbd_handler to this
   sta VKPD
   lda #>kbd_handler
   sta VKPD+1
 
   ; setup NMI
-  lda #$c0       ; VBI + DLI
+  lda #$c0                      ; VBI + DLI
   sta NMIEN
 
   ; enable interrupts
-  lda #$40
-  sta POKMSK
-  sta IRQEN
+  lda #$40                      ;  $40 (64) is bit 5 and 3
+  sta POKMSK                    ; 5: Serial input data ready interrupt enabled
+  sta IRQEN                     ; 3: Serial out transmission finished interrupt
+                                ; is enabled.
 
-  lda #2
+; enable keyboard scanning
+  lda #$2                       ; bit 1 enables kb scanning
   sta SKCTL
   cli
 
-  ; lda #$ff
-  ; sta sCOLPM0
-  ; initialize scroll variables
 ; cache dynamic strings in RAM
 ; copy topline
-.LOCAL
   ldx #19
 topline_loop
   lda topline,x
@@ -367,7 +370,6 @@ topline_loop
   bpl topline_loop
 
 ; copy scoreline
-.LOCAL
   ldx #0
 scoreline_loop
   lda scoreline,x
@@ -375,25 +377,27 @@ scoreline_loop
   inx
   cpx #40
   bcc scoreline_loop
-  ;
-?done
 
-.LOCAL
+; copy bottom status line
   ldx #0
-?loop
+spotshow_loop
   lda potshow,x
   sta spotshow,x
   inx
   cpx #40
-  bcc ?loop
+  bcc spotshow_loop
 
+; copy player-missile graphics address to PMBASE
   lda #>pmgraphics
   sta PMBASE
 
-  ; center the player
+; center the player
   lda #$5f
   sta playerx
+  lda #10
+  sta playery
 
+; zero out scroll registers
   lda #0
   sta vert_scroll
   sta VSCROL
@@ -401,33 +405,25 @@ scoreline_loop
   lda #16
   sta vert_scroll_max
 
+; add a delay
   lda #155
   sta delay
 
+; reset physics
+  ldx #$0
+  stx vx
+  stx vy
+  ; ldx #5
+  ; stx vxmax
+  ldx #10
+  ; stx vymax
+  ldx physics_timer_default
+  stx physics_timer
 
 
-.LOCAL
+; *************************************
+; loop forever
 forever
-;   ldx delay
-; ?start
-;   lda RTCLOK+1
-; ?waitvb
-;   cmp RTCLOK+1
-;   beq ?waitvb
-;   dex
-;   bpl ?start
-;   ; check up/down movement
-;   ; lda player_updown
-;   ; cmp #0
-;   ; beq ?done
-;   ; cmp #$f
-;   ; beq ?down
-;   jsr fine_scroll_up
-;   jmp ?done
-; ?down
-;   jsr fine_scroll_down
-; ?done
-;   jsr show_scroll
   jmp forever
 
 ;
@@ -436,6 +432,12 @@ vbi_deferred
   cld
   lda #$f8
   sta CHBASE
+  dec physics_timer
+  bne ?skip_physics
+  lda #6
+  sta physics_timer
+  jsr move_player_physics
+?skip_physics
   jsr write_player
   lda playerx
   sta HPOSP0
@@ -458,6 +460,38 @@ vbi_deferred
   jsr show_scroll
   jmp $fcb2
 ;
+move_player_physics
+  lda #~00000001      ; color0 collision
+  and P0PF
+  bne collision
+  ; account for gravity
+  clc
+  lda vy
+  adc #gravity
+  cmp #vymax
+  bge terminal_vy
+  sta vy
+  jmp accel
+collision
+  lda playery
+  sbc vy
+  sta playery
+  lda #0              ; set vy to 0, we've hit something
+  sta vy
+  sta HITCLR          ; also clear the hit reg
+
+  jmp accel
+terminal_vy
+  lda #vymax
+  sta vy
+accel
+  lda playery
+  adc vy
+physics_done
+  sta playery
+  rts
+
+
 
 
 .LOCAL
@@ -547,6 +581,21 @@ show_scroll
   lda hexcode+1
   sta spotshow+22
 
+  lda vx
+  jsr a2hexcode
+  lda hexcode
+  sta spotshow+26
+  lda hexcode+1
+  sta spotshow+27
+  lda vy
+  jsr a2hexcode
+  lda hexcode
+  sta spotshow+33
+  lda hexcode+1
+  sta spotshow+34
+  ldy gravity
+  lda numbers,y
+  sta spotshow+38
   rts
 
 ; coarse_scroll_down
@@ -559,12 +608,23 @@ show_scroll
   ; sta dlist_coarse_address+1
   ; rts
 
-
-
+.LOCAL
+clear_player
+  ; clears out the player before re-writing him
+  ldx playery
+  ldy #14 ; player height
+  lda #0
+?clearloop
+  sta pm_player0,x
+  inx
+  dey
+  bne ?clearloop
+  rts
 
 .LOCAL
 write_player
-; empty player
+  jsr clear_player
+empty player
   lda #0
   ldy #$ff
 ?emptyloop
@@ -649,6 +709,8 @@ write_player
 ?done
 
   rts
+
+
 .LOCAL
 ; first handle e/w
 move_player
@@ -739,24 +801,22 @@ dli
   bge ?bottom
   lda #>cmchar
   sta CHBASE
-
-
   jsr move_player
-  lda PADDL0
-  jsr a2hexcode
-  lda hexcode
-  ; sta COLOR2
-  ldy #8
-  ; sta spotshow,y
-  lda hexcode+1
-  ; sta spotshow+1,y
+  ; lda PADDL0
+  ; jsr a2hexcode
+  ; lda hexcode
+  ; ; sta COLOR2
+  ; ldy #8
+  ; ; sta spotshow,y
+  ; lda hexcode+1
+  ; ; sta spotshow+1,y
   ; lda PADDL1
-  lda #$92
-  sta playery
-  jsr a2hexcode
-  lda hexcode
-  ldy #22
-  ; sta spotshow,y
+  ; lda #$92
+  ; sta playery
+  ; jsr a2hexcode
+  ; lda hexcode
+  ; ldy #22
+  ; ; sta spotshow,y
   lda hexcode+1
   ; sta spotshow+1,y
   lda playerx
@@ -819,7 +879,7 @@ dlist
   .byte $5|DL_VSCROLL
   .byte $5                        ; buffer for vscroll
   .byte $0|DL_DLI
-  .byte $2|DL_LMS
+  .byte $5|DL_LMS
   .word spotshow
   .byte $41
   .word dlist
@@ -827,11 +887,11 @@ dlist
 
 topline
          ;012345678901234567890
-  .sbyte "   PLAYER DEMO 2    "
+  .sbyte "   PLAYER DEMO 3    "
 
 scoreline
          ;0123456789012345678901234567890123456789
-  .sbyte "  PM GRAPHICS WITH SCROLLING PLAYFIELD  "
+  .sbyte "       PM GRAPHICS WITH PHYSICS        "
 blanks
   .sbyte "                                        "
   .sbyte "                                        "
@@ -846,7 +906,7 @@ blanks
   * = $5200
 potshow
          ;0123456789012345678901234567890123456789
-  .sbyte "VSCROL:       LMS:                      "
+  .sbyte "VSCROL:       LMS:     VX:    VY:   A:  "
   .sbyte "Following on that..."
 dirtxt
   .sbyte "LR"
